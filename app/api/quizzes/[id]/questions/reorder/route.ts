@@ -1,0 +1,41 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import { quizQuestionReorderSchema } from "@/lib/validators";
+
+export const dynamic = "force-dynamic";
+
+type Params = { params: { id: string } };
+
+export async function PUT(request: NextRequest, { params }: Params) {
+  const { error, user } = await requireAuth();
+  if (error) return error;
+  if (!canManageQuestions(user!.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const parsed = quizQuestionReorderSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+  }
+
+  const quizId = Number(params.id);
+
+  await prisma.$transaction(
+    parsed.data.questionIds.map((questionId, index) =>
+      prisma.quizQuestion.update({
+        where: { quizId_questionId: { quizId, questionId } },
+        data: { order: index },
+      })
+    )
+  );
+
+  const questions = await prisma.quizQuestion.findMany({
+    where: { quizId },
+    include: { question: { include: { options: true } } },
+    orderBy: { order: "asc" },
+  });
+
+  return NextResponse.json(questions);
+}

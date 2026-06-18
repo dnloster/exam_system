@@ -1,0 +1,34 @@
+Thủ đô của Việt Nam là gì?
+A. Hà Nội
+B. TP. Hồ Chí Minh
+C. Đà Nẵng
+D. Huế
+ANSWER: A
+
+HTTP là viết tắt của gì?
+A. HyperText Transfer Protocol
+B. High Transfer Text Program
+C. HyperText Transmission Process
+D. Home Tool Transfer Protocol
+ANSWER: A
+
+Thiết bị nào định tuyến gói tin giữa các mạng?
+A. Switch
+B. Router
+C. Hub
+D. Repeater
+ANSWER: B
+
+Ngôn ngữ nào chạy trên trình duyệt web?
+A. C++
+B. JavaScript
+C. Assembly
+D. Fortran
+ANSWER: B
+
+Đâu là các chuẩn kết nối ổ đĩa cứng với bo mạch chủ?
+A. IDE
+B. NTFS
+C. FAT32
+D. SATA
+ANSWER: A,D
