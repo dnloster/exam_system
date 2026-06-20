@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { assertQuestionInQuiz } from "@/lib/question-helpers";
-import {
-  questionUpdateSchema,
-  optionsFromGrades,
-} from "@/lib/validators";
+import { questionUpdateSchema } from "@/lib/validators";
+import { prismaQuestionUpdateFromForm } from "@/lib/question-api";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +18,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   const question = await prisma.question.findUnique({
     where: { id: Number(params.id) },
-    include: { options: true },
+    include: { options: { orderBy: { sortOrder: "asc" } } },
   });
 
   if (!question) {
@@ -70,15 +68,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const question = await prisma.question.update({
     where: { id },
-    data: {
-      name: parsed.data.name,
-      content: parsed.data.content,
-      categoryId: parsed.data.categoryId ?? undefined,
-      points: Math.round(parsed.data.points),
-      generalFeedback: parsed.data.generalFeedback,
-      shuffleAnswers: parsed.data.shuffleAnswers,
-      options: { create: optionsFromGrades(parsed.data.options) },
-    },
+    data: prismaQuestionUpdateFromForm(parsed.data),
     include: { options: true, questionCategory: true },
   });
 

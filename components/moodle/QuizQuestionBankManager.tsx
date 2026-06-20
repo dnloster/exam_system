@@ -10,14 +10,24 @@ import Input from "@/components/ui/Input";
 import Checkbox from "@/components/ui/Checkbox";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
-import type { MoodleQuestionData } from "./MoodleQuestionEditor";
+import type { QuestionFormData } from "@/lib/question-payload";
+import { dbToFormData } from "@/lib/question-payload";
+import { getQuestionTypeLabel } from "@/lib/question-types";
 import type { PreviewQuestion } from "@/components/quiz/QuestionPreview";
-import { optionsToEditorGrades } from "@/lib/question-options";
+
+import Select from "@/components/ui/Select";
+import {
+  buildCategoryTree,
+  getDescendantIds,
+  type CategoryTreeNode,
+} from "@/lib/category-tree";
 
 type Category = {
   id: number;
   name: string;
-  _count: { questions: number };
+  parentId: number | null;
+  parent?: { id: number; name: string } | null;
+  _count: { questions: number; children?: number };
 };
 
 type Question = {
@@ -26,16 +36,34 @@ type Question = {
   content: string;
   points: number;
   type: string;
+  configJson?: unknown;
   questionCategory: { id: number; name: string } | null;
-  options: { id: number; text: string; isCorrect: boolean; gradePercent?: number }[];
+  options: {
+    id: number;
+    text: string;
+    isCorrect: boolean;
+    gradePercent?: number;
+    sortOrder?: number;
+    optionRole?: string;
+    groupKey?: string | null;
+    matchTarget?: string | null;
+  }[];
 };
 
 type QuizQuestionBankManagerProps = {
   quizId: number;
 };
 
-function toEditorOptions(options: Question["options"]) {
-  return optionsToEditorGrades(options);
+function questionToFormData(
+  q: Question,
+  categoryName?: string
+): Partial<QuestionFormData> {
+  return {
+    ...dbToFormData(q),
+    name: q.name ?? undefined,
+    points: q.points,
+    category: q.questionCategory?.name ?? categoryName,
+  };
 }
 
 function matchesSearch(question: Question, query: string) {
@@ -54,6 +82,7 @@ export default function QuizQuestionBankManager({
   );
   const [questions, setQuestions] = useState<Question[]>([]);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string>("");
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [previewQuestion, setPreviewQuestion] = useState<PreviewQuestion | null>(
@@ -64,6 +93,19 @@ export default function QuizQuestionBankManager({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(
+    null
+  );
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [editingCategoryParentId, setEditingCategoryParentId] =
+    useState<string>("");
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const [categoryError, setCategoryError] = useState("");
+
+  const categoryTree = useMemo(
+    () => buildCategoryTree(categories),
+    [categories]
+  );
 
   const filteredQuestions = useMemo(
     () => questions.filter((q) => matchesSearch(q, searchQuery)),
@@ -83,9 +125,10 @@ export default function QuizQuestionBankManager({
     if (res.ok) {
       const cats: Category[] = await res.json();
       setCategories(cats);
-      if (!selectedCategoryId && cats.length > 0) {
-        setSelectedCategoryId(cats[0].id);
-      }
+      setSelectedCategoryId((prev) => {
+        if (prev && cats.some((c) => c.id === prev)) return prev;
+        return cats.length > 0 ? cats[0].id : null;
+      });
     }
   }
 
@@ -121,18 +164,101 @@ export default function QuizQuestionBankManager({
   async function createCategory(e: React.FormEvent) {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
+    setCategoryError("");
+    setCategoryBusy(true);
     const res = await fetch(`/api/quizzes/${quizId}/categories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newCategoryName.trim() }),
+      body: JSON.stringify({
+        name: newCategoryName.trim(),
+        parentId: newCategoryParentId ? Number(newCategoryParentId) : null,
+      }),
     });
+    setCategoryBusy(false);
     if (res.ok) {
       setNewCategoryName("");
+      setNewCategoryParentId("");
       await loadCategories();
+    } else {
+      const data = await res.json();
+      setCategoryError(data.error ?? "Không thể thêm danh mục");
     }
   }
 
-  async function saveQuestion(data: MoodleQuestionData) {
+  function startEditCategory(cat: CategoryTreeNode) {
+    setCategoryError("");
+    setEditingCategoryId(cat.id);
+    setEditingCategoryName(cat.name);
+    setEditingCategoryParentId(
+      cat.parentId != null ? String(cat.parentId) : ""
+    );
+  }
+
+  function cancelEditCategory() {
+    setEditingCategoryId(null);
+    setEditingCategoryName("");
+    setEditingCategoryParentId("");
+  }
+
+  async function saveCategoryEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingCategoryId || !editingCategoryName.trim()) return;
+    setCategoryError("");
+    setCategoryBusy(true);
+    const res = await fetch(
+      `/api/quizzes/${quizId}/categories/${editingCategoryId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingCategoryName.trim(),
+          parentId: editingCategoryParentId
+            ? Number(editingCategoryParentId)
+            : null,
+        }),
+      }
+    );
+    setCategoryBusy(false);
+    if (res.ok) {
+      cancelEditCategory();
+      await loadCategories();
+    } else {
+      const data = await res.json();
+      setCategoryError(data.error ?? "Không thể đổi tên danh mục");
+    }
+  }
+
+  async function deleteCategory(cat: CategoryTreeNode) {
+    if ((cat._count.children ?? 0) > 0) {
+      setCategoryError(
+        `Danh mục "${cat.name}" còn ${cat._count.children} danh mục con. Hãy xóa hoặc chuyển trước.`
+      );
+      return;
+    }
+    if (cat._count.questions > 0) {
+      setCategoryError(
+        `Danh mục "${cat.name}" còn ${cat._count.questions} câu hỏi. Hãy xóa hoặc chuyển câu hỏi trước.`
+      );
+      return;
+    }
+    if (!confirm(`Xóa danh mục "${cat.name}"?`)) return;
+    setCategoryError("");
+    setCategoryBusy(true);
+    const res = await fetch(
+      `/api/quizzes/${quizId}/categories/${cat.id}`,
+      { method: "DELETE" }
+    );
+    setCategoryBusy(false);
+    if (res.ok) {
+      if (editingCategoryId === cat.id) cancelEditCategory();
+      await loadCategories();
+    } else {
+      const data = await res.json();
+      setCategoryError(data.error ?? "Không thể xóa danh mục");
+    }
+  }
+
+  async function saveQuestion(data: QuestionFormData) {
     const payload = {
       ...data,
       categoryId: selectedCategoryId,
@@ -204,8 +330,40 @@ export default function QuizQuestionBankManager({
     });
   }
 
-  const categoryNames = categories.map((c) => c.name);
-  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
+  const categoryNames = categoryTree.map((c) => c.path);
+  const selectedCategory = categoryTree.find((c) => c.id === selectedCategoryId);
+
+  function CategoryParentSelect({
+    value,
+    onChange,
+    excludeIds,
+    disabled,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    excludeIds?: Set<number>;
+    disabled?: boolean;
+  }) {
+    const options = categoryTree.filter(
+      (c) => !excludeIds?.has(c.id)
+    );
+    return (
+      <Select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="min-w-[140px]"
+      >
+        <option value="">— Danh mục gốc —</option>
+        {options.map((c) => (
+          <option key={c.id} value={c.id}>
+            {"— ".repeat(c.depth)}
+            {c.name}
+          </option>
+        ))}
+      </Select>
+    );
+  }
 
   return (
     <div>
@@ -223,19 +381,12 @@ export default function QuizQuestionBankManager({
         }}
         editing={!!editing}
         questionId={editing?.id}
-        categoryName={selectedCategory?.name}
+        categoryName={selectedCategory?.path ?? selectedCategory?.name}
         categories={categoryNames}
         initial={
           editing
-            ? {
-                name: editing.name ?? undefined,
-                content: editing.content,
-                category:
-                  editing.questionCategory?.name ?? selectedCategory?.name,
-                points: editing.points,
-                options: toEditorOptions(editing.options),
-              }
-            : { category: selectedCategory?.name }
+            ? questionToFormData(editing, selectedCategory?.path)
+            : { category: selectedCategory?.path ?? selectedCategory?.name, type: "MULTIPLE_CHOICE" }
         }
         onSubmit={saveQuestion}
       />
@@ -245,7 +396,7 @@ export default function QuizQuestionBankManager({
         onClose={() => setShowImportModal(false)}
         quizId={quizId}
         categoryId={selectedCategoryId}
-        categoryName={selectedCategory?.name}
+        categoryName={selectedCategory?.path ?? selectedCategory?.name}
         onImported={async () => {
           await loadCategories();
           if (selectedCategoryId) await loadQuestions(selectedCategoryId);
@@ -255,35 +406,132 @@ export default function QuizQuestionBankManager({
       <div className="mb-6 grid gap-4 md:grid-cols-2">
         <Card>
           <h3 className="mb-3 font-semibold text-slate-900">Danh mục câu hỏi</h3>
-          <ul className="mb-4 space-y-1">
-            {categories.map((cat) => (
-              <li key={cat.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryId(cat.id)}
-                  className={cn(
-                    "w-full rounded-xl px-3 py-2 text-left text-sm transition",
-                    selectedCategoryId === cat.id
-                      ? "bg-portal-primary text-white shadow-sm"
-                      : "text-slate-700 hover:bg-slate-100"
-                  )}
-                >
-                  {cat.name}{" "}
-                  <span className="opacity-80">({cat._count.questions})</span>
-                </button>
-              </li>
-            ))}
+          <ul className="mb-4 max-h-80 space-y-1 overflow-y-auto">
+            {categoryTree.map((cat) => {
+              const isSelected = selectedCategoryId === cat.id;
+              const isEditing = editingCategoryId === cat.id;
+
+              if (isEditing) {
+                return (
+                  <li key={cat.id}>
+                    <form
+                      onSubmit={saveCategoryEdit}
+                      className="space-y-2 rounded-xl border border-portal-primary/30 bg-blue-50/40 p-2"
+                    >
+                      <Input
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                        placeholder="Tên danh mục"
+                        autoFocus
+                        disabled={categoryBusy}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-slate-500">Danh mục cha:</span>
+                        <CategoryParentSelect
+                          value={editingCategoryParentId}
+                          onChange={setEditingCategoryParentId}
+                          excludeIds={getDescendantIds(cat.id, categories)}
+                          disabled={categoryBusy}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="submit" size="sm" disabled={categoryBusy}>
+                          Lưu
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={cancelEditCategory}
+                          disabled={categoryBusy}
+                        >
+                          Hủy
+                        </Button>
+                      </div>
+                    </form>
+                  </li>
+                );
+              }
+
+              return (
+                <li key={cat.id}>
+                  <div
+                    className={cn(
+                      "flex items-center gap-1 rounded-xl transition",
+                      isSelected ? "bg-portal-primary shadow-sm" : "hover:bg-slate-100"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategoryId(cat.id)}
+                      className={cn(
+                        "min-w-0 flex-1 rounded-xl py-2 text-left text-sm transition",
+                        isSelected ? "text-white" : "text-slate-700"
+                      )}
+                      style={{ paddingLeft: `${12 + cat.depth * 16}px`, paddingRight: "12px" }}
+                    >
+                      {cat.depth > 0 && (
+                        <span className="mr-1 opacity-50">↳</span>
+                      )}
+                      {cat.name}{" "}
+                      <span className="opacity-80">
+                        ({cat._count.questions}
+                        {(cat._count.children ?? 0) > 0 &&
+                          ` · ${cat._count.children} con`}
+                        )
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEditCategory(cat)}
+                      className={cn(
+                        "rounded-lg px-2 py-1 text-xs hover:underline",
+                        isSelected
+                          ? "text-white/90 hover:text-white"
+                          : "text-portal-primary"
+                      )}
+                      title="Sửa danh mục"
+                    >
+                      Sửa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteCategory(cat)}
+                      disabled={categoryBusy}
+                      className={cn(
+                        "rounded-lg px-2 py-1 text-xs hover:underline disabled:opacity-50",
+                        isSelected ? "text-white/90 hover:text-white" : "text-red-600"
+                      )}
+                      title="Xóa danh mục"
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-          <form onSubmit={createCategory} className="flex gap-2">
+          {categoryError && (
+            <p className="mb-3 text-sm text-red-600">{categoryError}</p>
+          )}
+          <form onSubmit={createCategory} className="space-y-2">
             <Input
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
               placeholder="Tên danh mục mới"
-              className="flex-1"
+              disabled={categoryBusy}
             />
-            <Button type="submit" size="sm">
-              Thêm
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-slate-500">Danh mục cha:</span>
+              <CategoryParentSelect
+                value={newCategoryParentId}
+                onChange={setNewCategoryParentId}
+                disabled={categoryBusy}
+              />
+              <Button type="submit" size="sm" disabled={categoryBusy}>
+                Thêm
+              </Button>
+            </div>
           </form>
         </Card>
 
@@ -291,7 +539,7 @@ export default function QuizQuestionBankManager({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold text-slate-900">
               Câu hỏi trong danh mục
-              {selectedCategory && `: ${selectedCategory.name}`}
+              {selectedCategory && `: ${selectedCategory.path}`}
             </h3>
             <div className="flex flex-wrap gap-2">
               <Link href={`/teacher/quizzes/${quizId}/preview`}>
@@ -306,7 +554,7 @@ export default function QuizQuestionBankManager({
                 onClick={() => setShowImportModal(true)}
                 disabled={!selectedCategoryId}
               >
-                Import Aiken
+                Nhập file
               </Button>
               <Button
                 type="button"
@@ -406,18 +654,18 @@ export default function QuizQuestionBankManager({
                         </p>
                       )}
                       <p className="mt-1 text-xs text-slate-500">
-                        Trắc nghiệm · {q.points} điểm
-                        {q.options.filter((o) => o.isCorrect).length > 1 &&
-                          " · Nhiều đáp án đúng"}
+                        {getQuestionTypeLabel(q.type)} · {q.points} điểm
                       </p>
                       <div className="mt-2 flex gap-3">
                         <button
                           type="button"
                           onClick={() =>
                             setPreviewQuestion({
+                              type: q.type,
                               name: q.name,
                               content: q.content,
                               points: q.points,
+                              configJson: q.configJson,
                               options: q.options,
                             })
                           }

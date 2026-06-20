@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
 import { assertStudentQuizAccess } from "@/lib/quiz-access";
+import { resolveRandomDrawsForAttempt } from "@/lib/random-questions";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,11 @@ export async function POST(request: NextRequest) {
 
     const quiz = await prisma.quiz.findUnique({
         where: { id: quizId },
-        include: { questions: true },
+        include: {
+            questions: {
+                orderBy: { order: "asc" },
+            },
+        },
     });
 
     if (!quiz) {
@@ -57,13 +62,53 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(existing);
     }
 
+    const fixedSlots = quiz.questions.filter(
+        (q) => q.slotType === "FIXED" && q.questionId != null
+    );
+    const randomSlots = quiz.questions.filter(
+        (q) => q.slotType === "RANDOM" && q.randomCategoryId != null
+    );
+
+    let randomDraws: { slotId: number; questionId: number }[] = [];
+    try {
+        randomDraws = await resolveRandomDrawsForAttempt(
+            quizId,
+            randomSlots.map((s) => ({
+                id: s.id,
+                randomCategoryId: s.randomCategoryId!,
+                includeSubcategories: s.includeSubcategories,
+            }))
+        );
+    } catch (e) {
+        return NextResponse.json(
+            {
+                error:
+                    e instanceof Error
+                        ? e.message
+                        : "Không thể rút câu hỏi ngẫu nhiên",
+            },
+            { status: 400 }
+        );
+    }
+
+    const answerQuestionIds = [
+        ...fixedSlots.map((q) => q.questionId!),
+        ...randomDraws.map((d) => d.questionId),
+    ];
+
     const attempt = await prisma.quizAttempt.create({
         data: {
             quizId,
             userId: Number(user!.id),
+            randomDraws: {
+                create: randomDraws.map((d) => ({
+                    quizQuestionId: d.slotId,
+                    questionId: d.questionId,
+                })),
+            },
             answers: {
-                create: quiz.questions.map((q) => ({
-                    questionId: q.questionId,
+                create: answerQuestionIds.map((questionId) => ({
+                    questionId,
                 })),
             },
         },

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
+import { isQuizWithinAvailabilityWindow } from "@/lib/quiz-access";
 import { attemptSubmitSchema } from "@/lib/validators";
 import {
-  gradeQuestionAnswer,
-  scoreQuestionAnswer,
-} from "@/lib/quiz-grading";
+  scoreAnswerForQuestion,
+  isAnswerFullyCorrect,
+} from "@/lib/question-grading";
+import type { StudentAnswerJson } from "@/lib/question-types";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +87,11 @@ export async function POST(request: NextRequest, { params }: Params) {
           },
         },
       },
+      randomDraws: {
+        include: {
+          question: { include: { options: true } },
+        },
+      },
       answers: true,
     },
   });
@@ -101,6 +108,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Already submitted" }, { status: 400 });
   }
 
+  if (!isQuizWithinAvailabilityWindow(attempt.quiz)) {
+    return NextResponse.json(
+      { error: "Bài kiểm tra đã quá thời gian đóng" },
+      { status: 403 }
+    );
+  }
+
   const body = await request.json();
   const parsed = attemptSubmitSchema.safeParse(body);
   if (!parsed.success) {
@@ -110,11 +124,22 @@ export async function POST(request: NextRequest, { params }: Params) {
   let earnedPoints = 0;
   let maxPoints = 0;
 
+  const questionsById = new Map<
+    number,
+    (typeof attempt.quiz.questions)[0]["question"]
+  >();
+
+  for (const qq of attempt.quiz.questions) {
+    if (qq.questionId != null && qq.question) {
+      questionsById.set(qq.questionId, qq.question);
+    }
+  }
+  for (const draw of attempt.randomDraws) {
+    questionsById.set(draw.questionId, draw.question);
+  }
+
   for (const answer of parsed.data.answers) {
-    const quizQuestion = attempt.quiz.questions.find(
-      (q) => q.questionId === answer.questionId
-    );
-    const question = quizQuestion?.question;
+    const question = questionsById.get(answer.questionId);
 
     if (!question) continue;
 
@@ -124,18 +149,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       ? answer.selectedOptionIds
       : undefined;
 
-    const scoreFraction = scoreQuestionAnswer(
-      question.options,
-      answer.selectedOptionId,
-      selectedOptionIds
-    );
+    const scoreFraction = scoreAnswerForQuestion(question, {
+      selectedOptionId: answer.selectedOptionId,
+      selectedOptionIds: answer.selectedOptionIds,
+      answerJson: answer.answerJson as StudentAnswerJson | undefined,
+    });
     earnedPoints += question.points * scoreFraction;
 
-    const isCorrect = gradeQuestionAnswer(
-      question.options,
-      answer.selectedOptionId,
-      selectedOptionIds
-    );
+    const isCorrect = isAnswerFullyCorrect(scoreFraction);
 
     const storedIds =
       selectedOptionIds ??
@@ -151,6 +172,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       data: {
         selectedOptionId: storedIds[0] ?? null,
         selectedOptionIds: storedIds.length > 0 ? storedIds : undefined,
+        answerJson: answer.answerJson
+          ? (answer.answerJson as object)
+          : undefined,
         isCorrect,
         scoreFraction,
       },

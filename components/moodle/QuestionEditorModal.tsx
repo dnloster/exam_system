@@ -1,9 +1,8 @@
 "use client";
 
 import Modal from "@/components/ui/Modal";
-import MoodleQuestionEditor, {
-  MoodleQuestionData,
-} from "./MoodleQuestionEditor";
+import UnifiedQuestionEditor from "./UnifiedQuestionEditor";
+import type { QuestionFormData } from "@/lib/question-payload";
 
 type QuestionEditorModalProps = {
   open: boolean;
@@ -12,8 +11,8 @@ type QuestionEditorModalProps = {
   questionId?: number;
   categoryName?: string;
   categories: string[];
-  initial?: Partial<MoodleQuestionData>;
-  onSubmit: (data: MoodleQuestionData) => Promise<void>;
+  initial?: Partial<QuestionFormData>;
+  onSubmit: (data: QuestionFormData) => Promise<void>;
   submitLabel?: string;
 };
 
@@ -44,9 +43,10 @@ export default function QuestionEditorModal({
       }
       size="xl"
     >
-      <MoodleQuestionEditor
+      <UnifiedQuestionEditor
         key={editorKey}
         embedded
+        allowTypeChange={!editing}
         categories={categories}
         initial={initial}
         onSubmit={onSubmit}

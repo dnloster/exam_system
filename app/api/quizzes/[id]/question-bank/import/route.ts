@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { aikenImportSchema } from "@/lib/validators";
+import { OptionRole, OptionMediaType, QuestionType } from "@prisma/client";
 import { parseAiken, aikenToQuestionPayload } from "@/lib/aiken-parser";
+import { parseQuestionJsonImport } from "@/lib/question-import-json";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +44,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     categoryId = cat.id;
   }
 
-  const { questions, errors } = parseAiken(parsed.data.content);
+  const { questions, errors } =
+    parsed.data.format === "json"
+      ? parseQuestionJsonImport(parsed.data.content)
+      : (() => {
+          const r = parseAiken(parsed.data.content);
+          return {
+            questions: r.questions.map((q) => aikenToQuestionPayload(q)),
+            errors: r.errors,
+          };
+        })();
   if (questions.length === 0) {
     return NextResponse.json(
       { imported: 0, errors: errors.length ? errors : ["Không tìm thấy câu hỏi hợp lệ"] },
@@ -55,16 +66,27 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   for (let i = 0; i < questions.length; i++) {
     try {
-      const payload = aikenToQuestionPayload(questions[i]);
+      const payload = questions[i];
       const question = await prisma.question.create({
         data: {
           name: payload.name,
           content: payload.content,
+          type: payload.type as QuestionType,
           categoryId,
           points: payload.points,
           shuffleAnswers: payload.shuffleAnswers,
           createdById: Number(user!.id),
-          options: { create: payload.options },
+          options: {
+            create: payload.options.map((o, idx) => ({
+              text: o.text,
+              mediaType: (o.mediaType ?? "TEXT") as OptionMediaType,
+              imageUrl: o.imageUrl ?? null,
+              isCorrect: o.isCorrect,
+              gradePercent: o.gradePercent,
+              sortOrder: o.sortOrder ?? idx,
+              optionRole: (o.optionRole ?? "CHOICE") as OptionRole,
+            })),
+          },
         },
       });
       createdIds.push(question.id);

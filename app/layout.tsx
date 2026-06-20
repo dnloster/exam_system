@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Lớp học trực tuyến - TCKT TT",
+  title: "Phần mềm thi trắc nghiệm - TCĐKTMM",
   description: "Hệ thống kiểm tra trắc nghiệm trực tuyến",
 };
 

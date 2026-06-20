@@ -32,7 +32,10 @@ export default function QuizDetailPage() {
   useEffect(() => {
     fetch(`/api/quizzes/${quizId}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("Không thể tải bài kiểm tra");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Không thể tải bài kiểm tra");
+        }
         return res.json();
       })
       .then(setQuiz)

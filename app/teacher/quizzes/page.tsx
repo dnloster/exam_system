@@ -15,7 +15,12 @@ type Quiz = {
   isPublished: boolean;
   passingScore: number;
   timeLimitMinutes: number | null;
-  questions: { id: number; question: { points: number } }[];
+  maxGrade?: number;
+  questions: {
+    id: number;
+    slotType?: "FIXED" | "RANDOM";
+    question: { points: number } | null;
+  }[];
   _count?: { participants: number };
 };
 
@@ -78,10 +83,12 @@ export default function TeacherQuizzesPage() {
               </thead>
               <tbody>
                 {quizzes.map((quiz) => {
-                  const maxGrade = quiz.questions.reduce(
-                    (s, q) => s + q.question.points,
-                    0
-                  );
+                  const maxGrade =
+                    quiz.maxGrade ??
+                    quiz.questions.reduce(
+                      (s, q) => s + (q.question?.points ?? 0),
+                      0
+                    );
                   return (
                     <tr key={quiz.id}>
                       <td>

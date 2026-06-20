@@ -50,10 +50,12 @@ export default function AikenImportModal({
     setLoading(true);
     setResult(null);
 
+    const format = preview.trim().startsWith("{") ? "json" : "aiken";
+
     const res = await fetch(`/api/quizzes/${quizId}/question-bank/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: preview, categoryId }),
+      body: JSON.stringify({ content: preview, categoryId, format }),
     });
 
     const data = await res.json();
@@ -80,7 +82,7 @@ export default function AikenImportModal({
     <Modal
       open={open}
       onClose={handleClose}
-      title="Import câu hỏi Aiken (.txt)"
+      title="Import câu hỏi trắc nghiệm"
       description={
         categoryName
           ? `Import vào danh mục: ${categoryName}`
@@ -90,19 +92,33 @@ export default function AikenImportModal({
     >
       <div className="space-y-4 text-sm">
         <p className="text-slate-600">
-          Định dạng Aiken: nội dung câu hỏi, các lựa chọn <code>A.</code>{" "}
-          <code>B.</code> …, dòng <code>ANSWER:</code>. Hỗ trợ nhiều đáp án:{" "}
-          <code>ANSWER: A,D</code> — điểm được chia đều (50% + 50%). Mỗi câu
-          cách nhau bằng dòng trống.
+          Hỗ trợ <strong>Aiken (.txt)</strong> và <strong>JSON (.json)</strong>{" "}
+          cho câu hỏi một/nhiều đáp án, kể cả đáp án hình ảnh.
         </p>
 
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+          <p className="mb-2 font-medium">Aiken — đáp án hình ảnh:</p>
+          <ul className="list-inside list-disc space-y-1">
+            <li>
+              <code>[IMAGE]https://example.com/a.png</code>
+            </li>
+            <li>
+              URL trực tiếp: <code>https://.../logo.png</code>
+            </li>
+            <li>
+              Markdown: <code>![mô tả](https://.../b.png)</code>
+            </li>
+          </ul>
+          <p className="mt-2 mb-1 font-medium">JSON — mỗi option:</p>
+          <pre className="overflow-x-auto text-[11px]">{`{ "mediaType": "IMAGE", "imageUrl": "https://...", "text": "Nhãn", "correct": true }`}</pre>
+        </div>
+
         <pre className="overflow-x-auto rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
-{`Đâu là các chuẩn kết nối ổ đĩa với bo mạch chủ?
+{`Đâu là các chuẩn kết nối ổ đĩa?
 A. IDE
-B. NTFS
-C. FAT32
-D. SATA
-ANSWER: A,D`}
+B. SATA
+C. [IMAGE]https://example.com/diagram.png
+ANSWER: A,B`}
         </pre>
 
         {!categoryId && (
@@ -115,7 +131,7 @@ ANSWER: A,D`}
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,text/plain"
+            accept=".txt,.json,text/plain,application/json"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -128,11 +144,16 @@ ANSWER: A,D`}
             size="sm"
             onClick={() => fileRef.current?.click()}
           >
-            Chọn file .txt
+            Chọn file .txt / .json
           </Button>
-          <a href="/samples/aiken-sample.txt" download>
+          <a href="/samples/aiken-images-sample.txt" download>
             <Button type="button" variant="ghost" size="sm">
-              Tải file mẫu
+              Mẫu Aiken (ảnh)
+            </Button>
+          </a>
+          <a href="/samples/questions-import.json" download>
+            <Button type="button" variant="ghost" size="sm">
+              Mẫu JSON (ảnh)
             </Button>
           </a>
         </div>
@@ -144,7 +165,7 @@ ANSWER: A,D`}
             setResult(null);
           }}
           rows={10}
-          placeholder="Dán nội dung file Aiken hoặc chọn file .txt..."
+          placeholder="Dán nội dung Aiken hoặc JSON, hoặc chọn file..."
           className="font-mono text-xs"
         />
 

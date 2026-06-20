@@ -6,10 +6,11 @@ import {
   getOrCreateDefaultCategory,
 } from "@/lib/question-helpers";
 import {
+  quizQuestionAttachBatchSchema,
   quizQuestionAttachSchema,
   quizQuestionCreateSchema,
-  optionsFromGrades,
 } from "@/lib/validators";
+import { prismaQuestionDataFromForm } from "@/lib/question-api";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ async function attachQuestion(quizId: number, questionId: number) {
     data: {
       quizId,
       questionId,
+      slotType: "FIXED",
       order: (maxOrder._max.order ?? -1) + 1,
     },
     include: { question: { include: { options: true } } },
@@ -40,6 +42,55 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const quizId = Number(params.id);
   const body = await request.json();
+
+  const batchParsed = quizQuestionAttachBatchSchema.safeParse(body);
+  if (batchParsed.success) {
+    const uniqueIds = Array.from(new Set(batchParsed.data.questionIds));
+    for (const questionId of uniqueIds) {
+      const scopeError = await assertQuestionInQuiz(questionId, quizId);
+      if (scopeError) {
+        return NextResponse.json({ error: scopeError }, { status: 400 });
+      }
+    }
+
+    const existing = await prisma.quizQuestion.findMany({
+      where: { quizId, questionId: { in: uniqueIds } },
+      select: { questionId: true },
+    });
+    const existingIds = new Set(existing.map((e) => e.questionId));
+    const toAttach = uniqueIds.filter((id) => !existingIds.has(id));
+
+    if (toAttach.length === 0) {
+      return NextResponse.json(
+        { attached: 0, skipped: uniqueIds.length, message: "Tất cả câu hỏi đã có trong bài kiểm tra" },
+        { status: 200 }
+      );
+    }
+
+    const maxOrder = await prisma.quizQuestion.aggregate({
+      where: { quizId },
+      _max: { order: true },
+    });
+    let order = (maxOrder._max.order ?? -1) + 1;
+
+    const links = await prisma.$transaction(
+      toAttach.map((questionId) =>
+        prisma.quizQuestion.create({
+          data: { quizId, questionId, order: order++ },
+          include: { question: { include: { options: true } } },
+        })
+      )
+    );
+
+    return NextResponse.json(
+      {
+        attached: links.length,
+        skipped: uniqueIds.length - links.length,
+        links,
+      },
+      { status: 201 }
+    );
+  }
 
   const attachParsed = quizQuestionAttachSchema.safeParse(body);
   if (attachParsed.success) {
@@ -81,16 +132,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   const defaultCat = await getOrCreateDefaultCategory(quizId);
 
   const question = await prisma.question.create({
-    data: {
-      name: createParsed.data.name,
-      content: createParsed.data.content,
-      categoryId: defaultCat.id,
-      points: Math.round(createParsed.data.points),
-      generalFeedback: createParsed.data.generalFeedback,
-      shuffleAnswers: createParsed.data.shuffleAnswers,
-      createdById: Number(user!.id),
-      options: { create: optionsFromGrades(createParsed.data.options) },
-    },
+    data: prismaQuestionDataFromForm(
+      createParsed.data,
+      defaultCat.id,
+      Number(user!.id)
+    ),
   });
 
   const link = await attachQuestion(quizId, question.id);
@@ -105,16 +151,32 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 
   const { searchParams } = new URL(request.url);
-  const questionId = Number(searchParams.get("questionId"));
+  const quizQuestionId = searchParams.get("quizQuestionId");
+  const questionId = searchParams.get("questionId");
+
+  if (quizQuestionId) {
+    const slot = await prisma.quizQuestion.findFirst({
+      where: { id: Number(quizQuestionId), quizId: Number(params.id) },
+    });
+    if (!slot) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    await prisma.quizQuestion.delete({ where: { id: slot.id } });
+    return NextResponse.json({ success: true });
+  }
+
   if (!questionId) {
-    return NextResponse.json({ error: "questionId required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "quizQuestionId hoặc questionId required" },
+      { status: 400 }
+    );
   }
 
   await prisma.quizQuestion.delete({
     where: {
       quizId_questionId: {
         quizId: Number(params.id),
-        questionId,
+        questionId: Number(questionId),
       },
     },
   });

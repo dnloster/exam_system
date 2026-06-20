@@ -1,0 +1,52 @@
+{
+  "questions": [
+    {
+      "content": "Chọn biểu tượng HTML5 đúng",
+      "type": "MULTIPLE_CHOICE",
+      "points": 2,
+      "options": [
+        {
+          "mediaType": "IMAGE",
+          "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/HTML5_logo_and_wordmark.svg/120px-HTML5_logo_and_wordmark.svg.png",
+          "text": "HTML5",
+          "correct": true
+        },
+        {
+          "mediaType": "IMAGE",
+          "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Unofficial_JavaScript_logo_2.svg/120px-Unofficial_JavaScript_logo_2.svg.png",
+          "text": "JavaScript",
+          "correct": false
+        },
+        {
+          "mediaType": "TEXT",
+          "text": "CSS",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "content": "Chọn các logo mã nguồn mở (nhiều đáp án)",
+      "type": "MULTIPLE_RESPONSE",
+      "options": [
+        {
+          "mediaType": "IMAGE",
+          "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/100px-Tux.svg.png",
+          "text": "Linux",
+          "correct": true
+        },
+        {
+          "mediaType": "IMAGE",
+          "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/120px-Microsoft_logo.svg.png",
+          "text": "Microsoft",
+          "correct": false
+        },
+        {
+          "mediaType": "IMAGE",
+          "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Git_icon.svg/100px-Git_icon.svg.png",
+          "text": "Git",
+          "correct": true
+        }
+      ]
+    }
+  ]
+}

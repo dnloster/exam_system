@@ -245,6 +245,47 @@
   .tab-active {
     @apply border border-b-0 border-slate-200 bg-white text-portal-primary shadow-sm;
   }
+
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  }
+
+  .modal-backdrop {
+    @apply absolute inset-0 bg-slate-900/50 backdrop-blur-sm;
+    transition: opacity 0.2s ease-out;
+  }
+
+  .modal-backdrop[data-state="open"] {
+    @apply opacity-100;
+  }
+
+  .modal-backdrop[data-state="closed"] {
+    @apply opacity-0;
+  }
+
+  .modal-panel {
+    @apply relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-elevated;
+    transition:
+      opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .modal-panel[data-state="open"] {
+    @apply scale-100 opacity-100;
+    transform: translateY(0);
+  }
+
+  .modal-panel[data-state="closed"] {
+    @apply scale-[0.96] opacity-0;
+    transform: translateY(0.5rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-backdrop,
+    .modal-panel {
+      transition: none !important;
+    }
+  }
 }
 
 .portal-title {

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { studentQuizListWhere } from "@/lib/quiz-access";
 import { quizCreateSchema } from "@/lib/validators";
+import { computeQuizMaxGradeFromDbQuestions } from "@/lib/quiz-slots";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,9 @@ export async function GET() {
     include: {
       course: true,
       createdBy: { select: { fullName: true } },
-      questions: { include: { question: true } },
+      questions: {
+        include: { question: true, randomCategory: true },
+      },
       participants: isTeacherOrAdmin
         ? { include: { user: { select: { id: true, fullName: true } } } }
         : false,
@@ -64,7 +67,14 @@ export async function GET() {
     });
   }
 
-  return NextResponse.json(quizzes);
+  const withMaxGrade = await Promise.all(
+    quizzes.map(async (quiz) => ({
+      ...quiz,
+      maxGrade: await computeQuizMaxGradeFromDbQuestions(quiz.id, quiz.questions),
+    }))
+  );
+
+  return NextResponse.json(withMaxGrade);
 }
 
 export async function POST(request: NextRequest) {

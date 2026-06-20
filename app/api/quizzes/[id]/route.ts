@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { assertStudentQuizAccess } from "@/lib/quiz-access";
-import { isMultipleResponseQuestion } from "@/lib/quiz-grading";
 import { quizUpdateSchema } from "@/lib/validators";
+import {
+  enrichQuizQuestionsForResponse,
+  computeQuizMaxGrade,
+  loadRandomDrawMapForAttempt,
+} from "@/lib/quiz-slots";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +26,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
         include: {
           question: {
             include: {
-              options: { select: { id: true, text: true, isCorrect: true, gradePercent: true } },
+              options: { orderBy: { sortOrder: "asc" } },
             },
           },
+          randomCategory: true,
         },
         orderBy: { order: "asc" },
       },
@@ -49,28 +54,22 @@ export async function GET(_request: NextRequest, { params }: Params) {
     }
   }
 
-  const maxGrade = quiz.questions.reduce(
-    (sum, q) => sum + q.question.points,
-    0
+  const attempt = quiz.attempts[0];
+  const randomDrawMap =
+    attempt != null
+      ? await loadRandomDrawMapForAttempt(attempt.id)
+      : undefined;
+
+  const sanitizedQuestions = await enrichQuizQuestionsForResponse(
+    quiz.id,
+    quiz.questions,
+    {
+      isTeacherOrAdmin,
+      randomDrawMap: isTeacherOrAdmin ? undefined : randomDrawMap,
+    }
   );
 
-  const sanitizedQuestions = quiz.questions.map((qq) => {
-    const multipleResponse = isMultipleResponseQuestion(qq.question.options);
-    return {
-      ...qq,
-      question: {
-        ...qq.question,
-        multipleResponse,
-        options: qq.question.options.map((o) => ({
-          id: o.id,
-          text: o.text,
-          ...(isTeacherOrAdmin
-            ? { isCorrect: o.isCorrect, gradePercent: o.gradePercent }
-            : {}),
-        })),
-      },
-    };
-  });
+  const maxGrade = computeQuizMaxGrade(sanitizedQuestions);
 
   return NextResponse.json({
     ...quiz,

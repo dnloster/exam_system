@@ -23,9 +23,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   const quizId = Number(params.id);
 
   await prisma.$transaction(
-    parsed.data.questionIds.map((questionId, index) =>
+    parsed.data.slotIds.map((slotId, index) =>
       prisma.quizQuestion.update({
-        where: { quizId_questionId: { quizId, questionId } },
+        where: { id: slotId },
         data: { order: index },
       })
     )
@@ -33,7 +33,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const questions = await prisma.quizQuestion.findMany({
     where: { quizId },
-    include: { question: { include: { options: true } } },
+    include: {
+      question: { include: { options: true } },
+      randomCategory: true,
+    },
     orderBy: { order: "asc" },
   });
 

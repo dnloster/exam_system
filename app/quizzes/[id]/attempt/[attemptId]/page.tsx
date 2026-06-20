@@ -15,8 +15,18 @@ type QuizData = {
     order: number;
     question: {
       id: number;
+      type?: string;
       content: string;
-      options: { id: number; text: string }[];
+      shuffleAnswers?: boolean;
+      multipleResponse?: boolean;
+      configJson?: unknown;
+      options: {
+        id: number;
+        text: string;
+        optionRole?: string;
+        sortOrder?: number;
+        groupKey?: string | null;
+      }[];
     };
   }[];
 };
@@ -58,14 +68,23 @@ export default function QuizAttemptPage() {
 
   return (
     <PortalLayout>
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="page-shell max-w-7xl">
         <QuizTaker
           quizId={quizId}
           attemptId={attemptId}
           title={quiz.title}
           timeLimitMinutes={quiz.timeLimitMinutes}
           shuffleQuestions={quiz.shuffleQuestions}
-          questions={quiz.questions}
+          questions={quiz.questions
+            .filter((q) => q.question != null)
+            .map((q) => ({
+              ...q,
+              questionId: q.questionId ?? q.question!.id,
+              question: {
+                ...q.question!,
+                type: q.question!.type ?? "MULTIPLE_CHOICE",
+              },
+            }))}
         />
       </div>
     </PortalLayout>

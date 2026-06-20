@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { questionCreateSchema } from "./question-validators";
 
 export const loginSchema = z.object({
   username: z.string().min(1, "Vui lòng nhập kí danh"),
@@ -17,31 +18,11 @@ export const questionOptionSchema = z.object({
   gradePercent: z.number().min(0).max(100),
 });
 
-export const questionCreateSchema = z.object({
-  name: z.string().optional(),
-  content: z.string().min(1),
-  category: z.string().optional(),
-  categoryId: z.number().int().optional().nullable(),
-  quizId: z.number().int().optional().nullable(),
-  points: z.number().min(0.1).default(1),
-  generalFeedback: z.string().optional(),
-  shuffleAnswers: z.boolean().default(false),
-  options: z
-    .array(questionOptionSchema)
-    .min(2, "Cần ít nhất 2 lựa chọn")
-    .max(10)
-    .refine(
-      (opts) => {
-        const sum = opts.reduce((s, o) => s + o.gradePercent, 0);
-        return Math.abs(sum - 100) < 0.01 && opts.some((o) => o.gradePercent > 0);
-      },
-      {
-        message: "Tổng % điểm các lựa chọn phải bằng 100%",
-      }
-    ),
-});
-
-export const questionUpdateSchema = questionCreateSchema;
+export {
+  questionFormSchema,
+  questionCreateSchema,
+  questionUpdateSchema,
+} from "./question-validators";
 
 export const quizCreateSchema = z.object({
   title: z.string().min(1),
@@ -63,10 +44,20 @@ export const quizQuestionAttachSchema = z.object({
   questionId: z.number().int(),
 });
 
+export const quizQuestionAttachBatchSchema = z.object({
+  questionIds: z.array(z.number().int()).min(1),
+});
+
 export const quizQuestionCreateSchema = questionCreateSchema;
 
 export const quizQuestionReorderSchema = z.object({
-  questionIds: z.array(z.number().int()).min(1),
+  slotIds: z.array(z.number().int()).min(1),
+});
+
+export const quizRandomQuestionSchema = z.object({
+  categoryId: z.number().int(),
+  count: z.number().int().min(1).max(50),
+  includeSubcategories: z.boolean().default(false),
 });
 
 export const attemptSubmitSchema = z.object({
@@ -75,6 +66,7 @@ export const attemptSubmitSchema = z.object({
       questionId: z.number().int(),
       selectedOptionId: z.number().int().nullable().optional(),
       selectedOptionIds: z.array(z.number().int()).optional(),
+      answerJson: z.record(z.string(), z.unknown()).optional(),
     })
   ),
 });
@@ -92,11 +84,15 @@ export const aikenImportSchema = z.object({
   content: z.string().min(1),
   categoryId: z.number().int().optional().nullable(),
   quizId: z.number().int().optional().nullable(),
+  format: z.enum(["aiken", "json"]).optional().default("aiken"),
 });
 
 export const questionCategoryCreateSchema = z.object({
   name: z.string().min(1),
+  parentId: z.number().int().nullable().optional(),
 });
+
+export const questionCategoryUpdateSchema = questionCategoryCreateSchema;
 
 export function optionsFromGrades(
   options: { text: string; gradePercent: number }[]

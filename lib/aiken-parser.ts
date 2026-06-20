@@ -1,6 +1,10 @@
+import { parseChoiceOptionContent } from "./choice-media";
+
 export type ParsedAikenOption = {
   label: string;
   text: string;
+  mediaType?: "TEXT" | "IMAGE";
+  imageUrl?: string;
 };
 
 export type ParsedAikenQuestion = {
@@ -77,9 +81,12 @@ export function parseAiken(content: string): AikenParseResult {
 
       const optionMatch = line.match(OPTION_RE);
       if (optionMatch) {
+        const parsed = parseChoiceOptionContent(optionMatch[2].trim());
         options.push({
           label: optionMatch[1].toUpperCase(),
-          text: optionMatch[2].trim(),
+          text: parsed.text,
+          mediaType: parsed.mediaType,
+          imageUrl: parsed.imageUrl,
         });
         continue;
       }
@@ -139,18 +146,24 @@ export function aikenToQuestionPayload(q: ParsedAikenQuestion) {
   const correctSet = new Set(q.answerLabels);
   const correctCount = q.answerLabels.length;
   const perCorrect = correctCount > 0 ? 100 / correctCount : 0;
+  const type = correctCount > 1 ? "MULTIPLE_RESPONSE" : "MULTIPLE_CHOICE";
 
   return {
+    type,
     content: q.content,
     name: q.content.split("\n")[0].slice(0, 100),
     points: 1,
     shuffleAnswers: false,
-    options: q.options.map((o) => {
+    options: q.options.map((o, i) => {
       const isCorrect = correctSet.has(o.label);
       return {
         text: o.text,
+        mediaType: o.mediaType ?? "TEXT",
+        imageUrl: o.imageUrl ?? null,
         isCorrect,
         gradePercent: isCorrect ? perCorrect : 0,
+        sortOrder: i,
+        optionRole: "CHOICE",
       };
     }),
   };

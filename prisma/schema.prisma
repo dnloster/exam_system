@@ -15,11 +15,38 @@ enum Role {
 
 enum QuestionType {
   MULTIPLE_CHOICE
+  MULTIPLE_RESPONSE
+  MATCHING
+  FILL_IN_BLANK
+  ORDERING
+  DRAG_AND_DROP
+  MATRIX
+}
+
+enum OptionRole {
+  CHOICE
+  MATCH_PROMPT
+  MATCH_ANSWER
+  ORDER_ITEM
+  DRAG_ITEM
+  DROP_ZONE
+  MATRIX_ROW
+  BLANK_ANSWER
+}
+
+enum OptionMediaType {
+  TEXT
+  IMAGE
 }
 
 enum AttemptStatus {
   IN_PROGRESS
   SUBMITTED
+}
+
+enum QuizQuestionSlotType {
+  FIXED
+  RANDOM
 }
 
 model User {
@@ -58,13 +85,17 @@ model CourseEnrollment {
 }
 
 model QuestionCategory {
-  id        Int        @id @default(autoincrement())
+  id        Int                @id @default(autoincrement())
   name      String
   quizId    Int?
-  quiz      Quiz?      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  parentId  Int?
+  quiz      Quiz?              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  parent    QuestionCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  QuestionCategory[] @relation("CategoryHierarchy")
   questions Question[]
+  randomQuizSlots QuizQuestion[] @relation("RandomQuizSlots")
 
-  @@unique([quizId, name])
+  @@unique([quizId, parentId, name])
 }
 
 model Question {
@@ -77,6 +108,7 @@ model Question {
   points           Int               @default(1)
   generalFeedback  String?           @db.Text
   shuffleAnswers   Boolean           @default(false)
+  configJson       Json?
   createdById      Int
   createdAt        DateTime          @default(now())
   createdBy        User              @relation("QuestionCreator", fields: [createdById], references: [id])
@@ -84,14 +116,21 @@ model Question {
   options          AnswerOption[]
   quizLinks        QuizQuestion[]
   answers          AttemptAnswer[]
+  randomDraws      AttemptRandomDraw[] @relation("RandomDrawnQuestions")
 }
 
 model AnswerOption {
   id           Int             @id @default(autoincrement())
   questionId   Int
   text         String          @db.Text
+  mediaType    OptionMediaType @default(TEXT)
+  imageUrl     String?         @db.Text
   isCorrect    Boolean         @default(false)
   gradePercent Float           @default(0)
+  sortOrder    Int             @default(0)
+  optionRole   OptionRole      @default(CHOICE)
+  groupKey     String?
+  matchTarget  String?
   question     Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
   selections   AttemptAnswer[] @relation("SelectedOption")
 }
@@ -131,12 +170,17 @@ model QuizParticipant {
 }
 
 model QuizQuestion {
-  id         Int      @id @default(autoincrement())
-  quizId     Int
-  questionId Int
-  order      Int      @default(0)
-  quiz       Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  id                   Int                   @id @default(autoincrement())
+  quizId               Int
+  order                Int                   @default(0)
+  slotType             QuizQuestionSlotType  @default(FIXED)
+  questionId           Int?
+  randomCategoryId     Int?
+  includeSubcategories Boolean               @default(false)
+  quiz                 Quiz                  @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  question             Question?             @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  randomCategory       QuestionCategory?     @relation("RandomQuizSlots", fields: [randomCategoryId], references: [id], onDelete: Cascade)
+  randomDraws          AttemptRandomDraw[]
 
   @@unique([quizId, questionId])
 }
@@ -152,8 +196,21 @@ model QuizAttempt {
   quiz        Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers     AttemptAnswer[]
+  randomDraws AttemptRandomDraw[]
 
   @@unique([quizId, userId])
+}
+
+model AttemptRandomDraw {
+  id             Int          @id @default(autoincrement())
+  attemptId      Int
+  quizQuestionId Int
+  questionId     Int
+  attempt        QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  quizQuestion   QuizQuestion @relation(fields: [quizQuestionId], references: [id], onDelete: Cascade)
+  question       Question     @relation("RandomDrawnQuestions", fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, quizQuestionId])
 }
 
 model AttemptAnswer {
@@ -162,6 +219,7 @@ model AttemptAnswer {
   questionId        Int
   selectedOptionId  Int?
   selectedOptionIds Json?
+  answerJson        Json?
   isCorrect         Boolean?
   scoreFraction     Float?
   attempt           QuizAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)

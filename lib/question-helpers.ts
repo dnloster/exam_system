@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 
 const DEFAULT_CATEGORY_NAME = "Mặc định cho bài kiểm tra";
 
+export { DEFAULT_CATEGORY_NAME };
+
 export async function getOrCreateDefaultCategory(quizId: number) {
   const existing = await prisma.questionCategory.findFirst({
     where: { quizId, name: DEFAULT_CATEGORY_NAME },

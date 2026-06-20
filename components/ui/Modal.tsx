@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "./cn";
 
@@ -19,6 +19,8 @@ const sizes = {
   xl: "max-w-4xl",
 };
 
+const EXIT_MS = 220;
+
 export default function Modal({
   open,
   onClose,
@@ -27,11 +29,28 @@ export default function Modal({
   children,
   size = "lg",
 }: ModalProps) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(open);
+
   useEffect(() => {
-    if (!open) return;
+    if (open) {
+      setMounted(true);
+      const frame = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+
+    setVisible(false);
+    const timer = window.setTimeout(() => setMounted(false), EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
+    if (!mounted) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && visible) onClose();
     };
 
     document.body.style.overflow = "hidden";
@@ -41,28 +60,32 @@ export default function Modal({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose]);
+  }, [mounted, visible, onClose]);
 
-  if (!open || typeof document === "undefined") return null;
+  if (!mounted || typeof document === "undefined") return null;
+
+  const state = visible ? "open" : "closed";
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="modal-overlay"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      aria-hidden={!visible}
     >
       <button
         type="button"
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+        className="modal-backdrop"
+        data-state={state}
         onClick={onClose}
         aria-label="Đóng"
+        tabIndex={visible ? 0 : -1}
       />
       <div
-        className={cn(
-          "relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-elevated",
-          sizes[size]
-        )}
+        className={cn("modal-panel", sizes[size])}
+        data-state={state}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
           <div>

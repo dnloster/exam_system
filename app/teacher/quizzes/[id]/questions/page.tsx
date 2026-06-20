@@ -10,7 +10,8 @@ type Quiz = {
   maxGrade: number;
   questions: {
     id: number;
-    questionId: number;
+    slotType?: "FIXED" | "RANDOM";
+    questionId: number | null;
     order: number;
     question: {
       id: number;
@@ -18,7 +19,7 @@ type Quiz = {
       content: string;
       points: number;
       type: string;
-    };
+    } | null;
   }[];
 };
 
@@ -51,7 +52,10 @@ export default function QuizQuestionsPage() {
 
   const maxGrade =
     quiz.maxGrade ??
-    quiz.questions.reduce((s, q) => s + q.question.points, 0);
+    quiz.questions.reduce((s, q) => {
+      if (q.slotType === "RANDOM") return s;
+      return s + (q.question?.points ?? 0);
+    }, 0);
 
   return (
     <div>

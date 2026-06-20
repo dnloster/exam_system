@@ -1,0 +1,13 @@
+Chọn logo Linux đúng?
+A. [IMAGE]https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/200px-Tux.svg.png
+B. [IMAGE]https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Windows_logo_-_2012.svg/200px-Windows_logo_-_2012.svg.png
+C. [IMAGE]https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/200px-Apple_logo_black.svg.png
+D. NTFS là gì?
+ANSWER: A
+
+Ngôn ngữ lập trình nào sau đây là interpreted? (chọn nhiều)
+A. Python
+B. ![Java logo](https://upload.wikimedia.org/wikipedia/en/thumb/3/30/Java_programming_language_logo.svg/120px-Java_programming_language_logo.svg.png)
+C. C++
+D. JavaScript
+ANSWER: A,D

@@ -2,20 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { questionCategoryCreateSchema } from "@/lib/validators";
+import { DEFAULT_CATEGORY_NAME } from "@/lib/question-helpers";
 
 export const dynamic = "force-dynamic";
 
 type Params = { params: { id: string } };
 
+const categoryInclude = {
+  _count: { select: { questions: true, children: true } },
+  parent: { select: { id: true, name: true } },
+} as const;
+
 async function ensureDefaultCategory(quizId: number) {
   const existing = await prisma.questionCategory.findFirst({
-    where: { quizId, name: "Mặc định cho bài kiểm tra" },
+    where: { quizId, name: DEFAULT_CATEGORY_NAME, parentId: null },
   });
   if (existing) return existing;
 
   return prisma.questionCategory.create({
-    data: { quizId, name: "Mặc định cho bài kiểm tra" },
+    data: { quizId, name: DEFAULT_CATEGORY_NAME, parentId: null },
   });
+}
+
+async function validateParent(
+  quizId: number,
+  parentId: number | null | undefined
+) {
+  if (parentId == null) return null;
+
+  const parent = await prisma.questionCategory.findFirst({
+    where: { id: parentId, quizId },
+  });
+  if (!parent) {
+    return "Danh mục cha không thuộc bài kiểm tra này";
+  }
+  return null;
 }
 
 export async function GET(_request: NextRequest, { params }: Params) {
@@ -30,10 +51,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   const categories = await prisma.questionCategory.findMany({
     where: { quizId },
-    include: {
-      _count: { select: { questions: true } },
-    },
-    orderBy: { name: "asc" },
+    include: categoryInclude,
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
   });
 
   return NextResponse.json(categories);
@@ -53,14 +72,27 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const quizId = Number(params.id);
+  const parentId = parsed.data.parentId ?? null;
+
+  const parentError = await validateParent(quizId, parentId);
+  if (parentError) {
+    return NextResponse.json({ error: parentError }, { status: 400 });
+  }
 
   try {
     const category = await prisma.questionCategory.create({
-      data: { quizId, name: parsed.data.name },
-      include: { _count: { select: { questions: true } } },
+      data: {
+        quizId,
+        name: parsed.data.name.trim(),
+        parentId,
+      },
+      include: categoryInclude,
     });
     return NextResponse.json(category, { status: 201 });
   } catch {
-    return NextResponse.json({ error: "Danh mục đã tồn tại" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Tên danh mục đã tồn tại trong cùng cấp" },
+      { status: 400 }
+    );
   }
 }

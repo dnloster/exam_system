@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 import { getOrCreateDefaultCategory } from "@/lib/question-helpers";
-import {
-  questionCreateSchema,
-  optionsFromGrades,
-} from "@/lib/validators";
+import { questionCreateSchema } from "@/lib/validators";
+import { prismaQuestionDataFromForm } from "@/lib/question-api";
+import { getDescendantIds } from "@/lib/category-tree";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +17,8 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const categoryId = searchParams.get("categoryId");
+  const includeSubcategories =
+    searchParams.get("includeSubcategories") === "true";
   const quizId = searchParams.get("quizId");
 
   if (!quizId) {
@@ -27,13 +28,31 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  let categoryFilter: { categoryId?: number | { in: number[] } } = {};
+  if (categoryId) {
+    const parsedCategoryId = Number(categoryId);
+    if (includeSubcategories) {
+      const categories = await prisma.questionCategory.findMany({
+        where: { quizId: Number(quizId) },
+        select: { id: true, parentId: true },
+      });
+      categoryFilter = {
+        categoryId: {
+          in: Array.from(getDescendantIds(parsedCategoryId, categories)),
+        },
+      };
+    } else {
+      categoryFilter = { categoryId: parsedCategoryId };
+    }
+  }
+
   const questions = await prisma.question.findMany({
     where: {
       questionCategory: { quizId: Number(quizId) },
-      ...(categoryId ? { categoryId: Number(categoryId) } : {}),
+      ...categoryFilter,
     },
     include: {
-      options: true,
+      options: { orderBy: { sortOrder: "asc" } },
       createdBy: { select: { fullName: true } },
       questionCategory: true,
     },
@@ -84,16 +103,11 @@ export async function POST(request: NextRequest) {
   }
 
   const question = await prisma.question.create({
-    data: {
-      name: parsed.data.name,
-      content: parsed.data.content,
+    data: prismaQuestionDataFromForm(
+      parsed.data,
       categoryId,
-      points: Math.round(parsed.data.points),
-      generalFeedback: parsed.data.generalFeedback,
-      shuffleAnswers: parsed.data.shuffleAnswers,
-      createdById: Number(user!.id),
-      options: { create: optionsFromGrades(parsed.data.options) },
-    },
+      Number(user!.id)
+    ),
     include: { options: true, questionCategory: true },
   });
 
