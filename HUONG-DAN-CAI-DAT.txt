@@ -1,0 +1,55 @@
+================================================================================
+  HƯỚNG DẪN CÀI ĐẶT NHANH (cho người mới)
+  Hệ thống kiểm tra trắc nghiệm — Trường Cao đẳng Kỹ thuật Thông tin
+================================================================================
+
+BƯỚC 1 — Cài MySQL (chỉ làm một lần)
+------------------------------------
+1. Tải MySQL Community Server 8.x: https://dev.mysql.com/downloads/mysql/
+2. Cài đặt, chọn "Developer Default" hoặc "Server only".
+3. Ghi nhớ MẬT KHẨU user root khi cài (ví dụ: root123).
+4. Đảm bảo dịch vụ MySQL đang chạy (Windows: Services > MySQL80 > Running).
+
+
+BƯỚC 2 — Chạy cài đặt tự động
+------------------------------
+Windows (khuyến nghị):
+  → Double-click file:  CAI-DAT.bat
+
+macOS / Linux / Git Bash:
+  → Mở terminal trong thư mục dự án, chạy:  bash CAI-DAT.sh
+
+Script sẽ tự động:
+  • Kiểm tra / gợi ý cài Node.js (nếu chưa có)
+  • Hỏi thông tin MySQL (máy chủ, user, mật khẩu)
+  • Tạo file .env
+  • Tạo database
+  • Cài thư viện (npm install)
+  • Tạo bảng và dữ liệu mẫu
+  • Chạy ứng dụng tại http://localhost:3000
+
+
+BƯỚC 3 — Đăng nhập thử
+-----------------------
+  Quản trị:    admin / admin123
+  Chỉ huy KCNTT: chi-huy-kcntt / chi-huy123
+  Thành viên:  thanhvien-kcntt-1 / thanhvien123
+  Mật khẩu bài thi mẫu: thi123
+
+
+LẦN SAU MUỐN CHẠY LẠI
+---------------------
+1. Mở thư mục dự án
+2. Mở Command Prompt hoặc PowerShell
+3. Gõ:  npm run dev
+4. Mở trình duyệt: http://localhost:3000
+
+
+GẶP LỖI?
+--------
+• "Can't connect to MySQL" → Kiểm tra MySQL đã bật chưa, user/mật khẩu đúng chưa
+• "Node is not recognized" → Cài Node.js 18+ tại https://nodejs.org, khởi động lại máy
+• Script bị chặn → Chuột phải CAI-DAT.bat > Run as administrator
+• Vẫn lỗi → Liên hệ người gửi dự án kèm ảnh chụp màn hình lỗi
+
+================================================================================
