@@ -1,24 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import { requireAuth, canManageQuestions, assertCommanderQuizAccess } from "@/lib/auth-helpers";
 import { quizRandomQuestionSchema } from "@/lib/validators";
 import {
   validateRandomSlotsCapacity,
-  estimateRandomSlotMaxPoints,
 } from "@/lib/random-questions";
+import { syncQuizQuestionPoints, pointsPerSlot } from "@/lib/quiz-points";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quizId = Number(params.id);
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
   const body = await request.json();
   const parsed = quizRandomQuestionSchema.safeParse(body);
   if (!parsed.success) {
@@ -73,20 +76,19 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   );
 
-  const estimatedMaxPoints = await estimateRandomSlotMaxPoints(
-    quizId,
-    categoryId,
-    includeSubcategories
-  );
+  await syncQuizQuestionPoints(quizId);
+
+  const slotCount = await prisma.quizQuestion.count({ where: { quizId } });
+  const perSlot = pointsPerSlot(slotCount);
 
   return NextResponse.json(
     {
       created: slots.length,
       poolSize: validation.poolSize,
-      estimatedMaxPoints,
+      estimatedMaxPoints: perSlot,
       slots: slots.map((s) => ({
         ...s,
-        estimatedMaxPoints,
+        estimatedMaxPoints: perSlot,
       })),
     },
     { status: 201 }

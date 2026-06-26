@@ -50,13 +50,6 @@ export default function QuizQuestionsPage() {
 
   if (!quiz) return <p>Đang tải...</p>;
 
-  const maxGrade =
-    quiz.maxGrade ??
-    quiz.questions.reduce((s, q) => {
-      if (q.slotType === "RANDOM") return s;
-      return s + (q.question?.points ?? 0);
-    }, 0);
-
   return (
     <div>
       <h2 className="mb-4 text-lg font-semibold text-gray-800">
@@ -65,7 +58,6 @@ export default function QuizQuestionsPage() {
       <QuizQuestionsManager
         quizId={quizId}
         questions={quiz.questions}
-        maxGrade={maxGrade}
         categories={categories}
         onRefresh={loadQuiz}
       />

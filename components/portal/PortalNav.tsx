@@ -101,23 +101,6 @@ export default function PortalNav() {
               <span className="hidden max-w-[160px] truncate rounded-full bg-white/10 px-3 py-1 sm:inline">
                 {session.user.fullName}
               </span>
-              {session.user.role === "ADMIN" && (
-                <Link
-                  href="/admin/users"
-                  className="rounded-lg px-2 py-1 hover:bg-white/10"
-                >
-                  Quản trị
-                </Link>
-              )}
-              {(session.user.role === "TEACHER" ||
-                session.user.role === "ADMIN") && (
-                <Link
-                  href="/teacher/quizzes"
-                  className="rounded-lg px-2 py-1 hover:bg-white/10"
-                >
-                  Giáo viên
-                </Link>
-              )}
               <button
                 onClick={() => signOut({ callbackUrl: "/" })}
                 className="rounded-lg px-2 py-1 hover:bg-white/10"

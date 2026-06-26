@@ -15,6 +15,7 @@ export default function QuizEditTabs({ quizTitle }: { quizTitle: string }) {
     { href: `/teacher/quizzes/${quizId}/question-bank`, label: "Ngân hàng câu hỏi" },
     { href: `/teacher/quizzes/${quizId}/preview`, label: "Xem trước đề" },
     { href: `/teacher/quizzes/${quizId}/participants`, label: "Ghi danh" },
+    { href: `/teacher/quizzes/${quizId}/grades`, label: "Tổng hợp điểm" },
   ];
 
   return (

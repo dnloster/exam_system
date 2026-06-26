@@ -4,9 +4,12 @@ import {
   sanitizeQuestionForTeacher,
 } from "@/lib/question-sanitize";
 import {
-  estimateRandomSlotMaxPoints,
   countRandomPool,
 } from "@/lib/random-questions";
+import {
+  QUIZ_TOTAL_POINTS,
+  pointsPerSlot,
+} from "@/lib/quiz-points";
 
 type QuizQuestionRow = {
   id: number;
@@ -33,6 +36,8 @@ export async function enrichQuizQuestionsForResponse(
     >;
   }
 ) {
+  const perSlot = pointsPerSlot(questions.length);
+
   const enriched = await Promise.all(
     questions.map(async (qq) => {
       if (qq.slotType === "RANDOM") {
@@ -44,25 +49,21 @@ export async function enrichQuizQuestionsForResponse(
                 qq.includeSubcategories
               )
             : 0;
-        const estimatedMaxPoints =
-          qq.randomCategoryId != null
-            ? await estimateRandomSlotMaxPoints(
-                quizId,
-                qq.randomCategoryId,
-                qq.includeSubcategories
-              )
-            : 0;
+        const estimatedMaxPoints = perSlot;
 
         const drawn = options.randomDrawMap?.get(qq.id);
         if (drawn && !options.isTeacherOrAdmin) {
-          const sanitized = sanitizeQuestionForStudent(drawn);
+          const sanitized = sanitizeQuestionForStudent({
+            ...drawn,
+            points: perSlot,
+          });
           return {
             ...qq,
             questionId: drawn.id,
             question: sanitized,
             poolSize,
             estimatedMaxPoints,
-            slotPoints: drawn.points,
+            slotPoints: perSlot,
             resolvedFromRandom: true,
           };
         }
@@ -79,13 +80,13 @@ export async function enrichQuizQuestionsForResponse(
       if (!qq.question) return { ...qq, slotPoints: 0 };
 
       const sanitized = options.isTeacherOrAdmin
-        ? sanitizeQuestionForTeacher(qq.question)
-        : sanitizeQuestionForStudent(qq.question);
+        ? sanitizeQuestionForTeacher({ ...qq.question, points: perSlot })
+        : sanitizeQuestionForStudent({ ...qq.question, points: perSlot });
 
       return {
         ...qq,
         question: sanitized,
-        slotPoints: qq.question.points,
+        slotPoints: perSlot,
       };
     })
   );
@@ -96,7 +97,8 @@ export async function enrichQuizQuestionsForResponse(
 export function computeQuizMaxGrade(
   questions: { slotPoints?: number }[]
 ) {
-  return questions.reduce((sum, q) => sum + (q.slotPoints ?? 0), 0);
+  if (questions.length === 0) return 0;
+  return QUIZ_TOTAL_POINTS;
 }
 
 export async function computeQuizMaxGradeFromDbQuestions(
@@ -108,19 +110,8 @@ export async function computeQuizMaxGradeFromDbQuestions(
     question: { points: number } | null;
   }[]
 ) {
-  let sum = 0;
-  for (const qq of questions) {
-    if (qq.slotType === "RANDOM" && qq.randomCategoryId != null) {
-      sum += await estimateRandomSlotMaxPoints(
-        quizId,
-        qq.randomCategoryId,
-        qq.includeSubcategories
-      );
-    } else {
-      sum += qq.question?.points ?? 0;
-    }
-  }
-  return sum;
+  if (questions.length === 0) return 0;
+  return QUIZ_TOTAL_POINTS;
 }
 
 export async function loadRandomDrawMapForAttempt(attemptId: number) {

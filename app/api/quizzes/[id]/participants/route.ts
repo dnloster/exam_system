@@ -1,36 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import {
+  requireAuth,
+  canManageQuestions,
+  assertCommanderQuizAccess,
+} from "@/lib/auth-helpers";
 import { quizParticipantEnrolSchema } from "@/lib/validators";
+import { resolveEnrollmentUserIds } from "@/lib/enrollment-eligibility";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
+
+const participantInclude = {
+  user: {
+    select: {
+      id: true,
+      username: true,
+      fullName: true,
+      role: true,
+      isActive: true,
+      unit: { select: { id: true, name: true } },
+    },
+  },
+} as const;
+
+async function getQuizUnitId(quizId: number) {
+  const quiz = await prisma.quiz.findUnique({
+    where: { id: quizId },
+    select: { unitId: true },
+  });
+  return quiz?.unitId ?? null;
+}
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quizId = Number(params.id);
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
+
   const participants = await prisma.quizParticipant.findMany({
     where: { quizId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          username: true,
-          fullName: true,
-          role: true,
-          isActive: true,
-          courseEnrollments: {
-            include: { course: { select: { id: true, code: true, name: true } } },
-          },
-        },
-      },
-    },
+    include: participantInclude,
     orderBy: { addedAt: "asc" },
   });
 
@@ -38,10 +55,23 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
+
+  const quizUnitId = await getQuizUnitId(quizId);
+  if (quizUnitId == null) {
+    return NextResponse.json(
+      { error: "Bài kiểm tra chưa gắn đơn vị" },
+      { status: 400 }
+    );
   }
 
   const body = await request.json();
@@ -53,43 +83,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const quizId = Number(params.id);
-  let userIds: number[] = parsed.data.userIds ?? [];
-
-  if (parsed.data.courseId) {
-    const enrolled = await prisma.courseEnrollment.findMany({
-      where: {
-        courseId: parsed.data.courseId,
-        user: { role: "STUDENT", isActive: true },
-      },
-      select: { userId: true },
-    });
-    userIds = Array.from(
-      new Set([...userIds, ...enrolled.map((e) => e.userId)])
-    );
-  }
+  const userIds = await resolveEnrollmentUserIds(user!, quizUnitId, parsed.data);
 
   if (userIds.length === 0) {
     return NextResponse.json(
-      { error: "Không có sinh viên hợp lệ để ghi danh" },
+      { error: "Không có đối tượng hợp lệ để ghi danh" },
       { status: 400 }
     );
   }
 
-  const students = await prisma.user.findMany({
-    where: {
-      id: { in: userIds },
-      role: "STUDENT",
-      isActive: true,
-    },
-  });
-
-  if (students.length === 0) {
-    return NextResponse.json({ error: "Không có sinh viên hợp lệ" }, { status: 400 });
-  }
-
   await prisma.quizParticipant.createMany({
-    data: students.map((s) => ({ quizId, userId: s.id })),
+    data: userIds.map((userId) => ({ quizId, userId })),
     skipDuplicates: true,
   });
 
@@ -101,26 +105,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const participants = await prisma.quizParticipant.findMany({
     where: { quizId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          username: true,
-          fullName: true,
-          role: true,
-          isActive: true,
-          courseEnrollments: {
-            include: { course: { select: { id: true, code: true, name: true } } },
-          },
-        },
-      },
-    },
+    include: participantInclude,
   });
 
   return NextResponse.json(
     {
       participants,
-      enrolledCount: students.length,
+      enrolledCount: userIds.length,
       isPublished: quiz.isPublished,
     },
     { status: 201 }
@@ -128,34 +119,26 @@ export async function POST(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const userId = Number(new URL(request.url).searchParams.get("userId"));
-  const courseId = Number(new URL(request.url).searchParams.get("courseId"));
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
 
-  if (courseId) {
-    const enrolled = await prisma.courseEnrollment.findMany({
-      where: { courseId },
-      select: { userId: true },
-    });
-    const ids = enrolled.map((e) => e.userId);
-    await prisma.quizParticipant.deleteMany({
-      where: { quizId: Number(params.id), userId: { in: ids } },
-    });
-    return NextResponse.json({ success: true, removed: ids.length });
-  }
+  const userId = Number(new URL(request.url).searchParams.get("userId"));
 
   if (!userId) {
-    return NextResponse.json({ error: "userId or courseId required" }, { status: 400 });
+    return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
 
   await prisma.quizParticipant.delete({
     where: {
-      quizId_userId: { quizId: Number(params.id), userId },
+      quizId_userId: { quizId, userId },
     },
   });
 

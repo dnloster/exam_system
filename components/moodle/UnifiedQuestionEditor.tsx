@@ -26,6 +26,8 @@ type UnifiedQuestionEditorProps = {
   continueLabel?: string;
   embedded?: boolean;
   allowTypeChange?: boolean;
+  /** Ẩn nhập điểm — điểm được tính tự động theo đề thi (tổng 10). */
+  hidePoints?: boolean;
 };
 
 const defaultChoiceOptions = (): EditorOption[] => [
@@ -45,6 +47,7 @@ export default function UnifiedQuestionEditor({
   continueLabel = "Lưu và tiếp tục chỉnh sửa",
   embedded = false,
   allowTypeChange = true,
+  hidePoints = false,
 }: UnifiedQuestionEditorProps) {
   const [type, setType] = useState<QuestionTypeValue>(
     initial?.type ?? "MULTIPLE_CHOICE"
@@ -170,7 +173,7 @@ export default function UnifiedQuestionEditor({
       name: name || undefined,
       content,
       category: category || undefined,
-      points,
+      points: hidePoints ? 1 : points,
       generalFeedback: generalFeedback || undefined,
       shuffleAnswers,
     };
@@ -784,17 +787,19 @@ export default function UnifiedQuestionEditor({
           />
         </div>
         <div className="form-grid-2">
-          <div>
-            <Label>Điểm</Label>
-            <Input
-              type="number"
-              min={0.1}
-              step={0.1}
-              value={points}
-              onChange={(e) => setPoints(Number(e.target.value))}
-              className="max-w-[140px]"
-            />
-          </div>
+          {!hidePoints && (
+            <div>
+              <Label>Điểm</Label>
+              <Input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={points}
+                onChange={(e) => setPoints(Number(e.target.value))}
+                className="max-w-[140px]"
+              />
+            </div>
+          )}
           {(type === "MULTIPLE_CHOICE" ||
             type === "MULTIPLE_RESPONSE" ||
             type === "MATCHING" ||

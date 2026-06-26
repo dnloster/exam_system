@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-helpers";
+import { getSessionUser, commanderQuizListWhere } from "@/lib/auth-helpers";
+import { isCommanderOrAdmin } from "@/lib/roles";
 import { studentQuizListWhere } from "@/lib/quiz-access";
 
 export const dynamic = "force-dynamic";
@@ -20,14 +21,16 @@ export async function GET(request: NextRequest) {
 
   let quizWhere: Record<string, unknown> = { id: -1 };
 
-  if (user?.role === "STUDENT") {
+  if (user?.role === "UNIT_MEMBER") {
     quizWhere = {
       ...studentQuizListWhere(Number(user.id)),
       ...textFilter,
     };
-  } else if (user?.role === "TEACHER" || user?.role === "ADMIN") {
+  } else if (user && isCommanderOrAdmin(user.role)) {
     quizWhere = {
-      isPublished: true,
+      ...(user.role === "UNIT_COMMANDER"
+        ? commanderQuizListWhere(user)
+        : {}),
       ...textFilter,
     };
   }

@@ -22,7 +22,7 @@ export default function StudentQuizPanel() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (status !== "authenticated" || session?.user.role !== "STUDENT") {
+    if (status !== "authenticated" || session?.user.role !== "UNIT_MEMBER") {
       return;
     }
 
@@ -33,7 +33,7 @@ export default function StudentQuizPanel() {
       .finally(() => setLoading(false));
   }, [session, status]);
 
-  if (status !== "authenticated" || session?.user.role !== "STUDENT") {
+  if (status !== "authenticated" || session?.user.role !== "UNIT_MEMBER") {
     return null;
   }
 
@@ -59,7 +59,7 @@ export default function StudentQuizPanel() {
         ) : quizzes.length === 0 ? (
           <Card className="border-dashed bg-slate-50/50">
             <p className="text-sm text-slate-600">
-              Chưa có bài kiểm tra. Khi giáo viên ghi danh bạn, bài sẽ hiển thị
+              Chưa có bài kiểm tra. Khi chỉ huy đơn vị ghi danh bạn, bài sẽ hiển thị
               tại đây.
             </p>
           </Card>

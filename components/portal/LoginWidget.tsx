@@ -40,7 +40,7 @@ export default function LoginWidget() {
 
     const res = await fetch("/api/auth/session");
     const nextSession = res.ok ? await res.json() : null;
-    const role = (nextSession?.user?.role ?? "STUDENT") as Role;
+    const role = (nextSession?.user?.role ?? "UNIT_MEMBER") as Role;
     router.push(getPostLoginPath(role));
     router.refresh();
   }

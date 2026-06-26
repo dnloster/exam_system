@@ -40,6 +40,7 @@ type QuizTakerProps = {
   title: string;
   timeLimitMinutes: number | null;
   shuffleQuestions: boolean;
+  questionsPerPage: number;
   questions: Question[];
 };
 
@@ -89,6 +90,7 @@ export default function QuizTaker({
   title,
   timeLimitMinutes,
   shuffleQuestions,
+  questionsPerPage,
   questions,
 }: QuizTakerProps) {
   const router = useRouter();
@@ -96,7 +98,7 @@ export default function QuizTaker({
     {}
   );
   const [flaggedIds, setFlaggedIds] = useState<Set<number>>(new Set());
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [pageIndex, setPageIndex] = useState(0);
   const [showReview, setShowReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -107,6 +109,22 @@ export default function QuizTaker({
     if (!shuffleQuestions) return sorted;
     return [...sorted].sort(() => Math.random() - 0.5);
   }, [questions, shuffleQuestions]);
+
+  const pageSize = useMemo(() => {
+    if (questionsPerPage <= 0) return orderedQuestions.length || 1;
+    return questionsPerPage;
+  }, [questionsPerPage, orderedQuestions.length]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(orderedQuestions.length / pageSize)
+  );
+  const pageStart = pageIndex * pageSize;
+  const pageQuestions = orderedQuestions.slice(
+    pageStart,
+    pageStart + pageSize
+  );
+  const isSingleQuestionPage = pageSize === 1;
 
   const totalSeconds = (timeLimitMinutes ?? 0) * 60;
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds || null);
@@ -157,7 +175,16 @@ export default function QuizTaker({
   }
 
   function goToQuestion(index: number) {
-    setActiveIndex(Math.max(0, Math.min(index, orderedQuestions.length - 1)));
+    const safeIndex = Math.max(
+      0,
+      Math.min(index, orderedQuestions.length - 1)
+    );
+    setPageIndex(Math.floor(safeIndex / pageSize));
+    setShowReview(false);
+  }
+
+  function goToPage(nextPage: number) {
+    setPageIndex(Math.max(0, Math.min(nextPage, totalPages - 1)));
     setShowReview(false);
   }
 
@@ -199,10 +226,6 @@ export default function QuizTaker({
   const minutes = secondsLeft !== null ? Math.floor(secondsLeft / 60) : null;
   const seconds = secondsLeft !== null ? secondsLeft % 60 : null;
 
-  const current = orderedQuestions[activeIndex];
-  const currentId = current?.question.id;
-  const isCurrentFlagged = currentId != null && flaggedIds.has(currentId);
-
   if (orderedQuestions.length === 0) {
     return (
       <Alert variant="warning">Bài kiểm tra không có câu hỏi.</Alert>
@@ -242,7 +265,9 @@ export default function QuizTaker({
             <NavButton
               key={q.question.id}
               index={index}
-              active={index === activeIndex}
+              active={
+                index >= pageStart && index < pageStart + pageSize
+              }
               answered={isQuestionAnswered(
                 q.question,
                 answers[q.question.id]
@@ -385,63 +410,80 @@ export default function QuizTaker({
         <aside className="lg:sticky lg:top-4">{sidebar}</aside>
 
         <div className="min-w-0 space-y-4">
-          {current && (
-            <Card className="p-5 sm:p-6">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Câu {activeIndex + 1} / {orderedQuestions.length}
-                  </p>
-                  {current.question.type !== "FILL_IN_BLANK" ? (
-                    <p className="mt-1 font-medium text-slate-900">
-                      {current.question.content}
-                    </p>
-                  ) : (
-                    <p className="mt-1 font-medium text-slate-900">
-                      Điền vào chỗ trống
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toggleFlag(current.question.id)}
-                  className={cn(
-                    "shrink-0 rounded-lg border px-3 py-1.5 text-sm transition",
-                    isCurrentFlagged
-                      ? "border-amber-400 bg-amber-50 text-amber-900"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  )}
-                >
-                  {isCurrentFlagged ? "🚩 Bỏ đánh dấu" : "🚩 Đánh dấu câu"}
-                </button>
-              </div>
-
-              <QuestionAnswerInput
-                question={current.question}
-                value={answers[current.question.id] ?? {}}
-                onChange={(value) => setAnswer(current.question.id, value)}
-              />
-
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                <Button
-                  variant="secondary"
-                  disabled={activeIndex === 0}
-                  onClick={() => goToQuestion(activeIndex - 1)}
-                >
-                  ← Câu trước
-                </Button>
-                {activeIndex < orderedQuestions.length - 1 ? (
-                  <Button onClick={() => goToQuestion(activeIndex + 1)}>
-                    Câu sau →
-                  </Button>
-                ) : (
-                  <Button onClick={() => setShowReview(true)}>
-                    Xem lại và nộp
-                  </Button>
-                )}
-              </div>
-            </Card>
+          {totalPages > 1 && (
+            <p className="text-sm font-medium text-slate-600">
+              {isSingleQuestionPage
+                ? `Câu ${pageStart + 1} / ${orderedQuestions.length}`
+                : `Trang ${pageIndex + 1} / ${totalPages} (câu ${pageStart + 1}–${Math.min(pageStart + pageSize, orderedQuestions.length)})`}
+            </p>
           )}
+
+          {pageQuestions.map((current, idxOnPage) => {
+            const globalIndex = pageStart + idxOnPage;
+            const isFlagged = flaggedIds.has(current.question.id);
+
+            return (
+              <Card key={current.question.id} className="p-5 sm:p-6">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Câu {globalIndex + 1} / {orderedQuestions.length}
+                    </p>
+                    {current.question.type !== "FILL_IN_BLANK" ? (
+                      <p className="mt-1 font-medium text-slate-900">
+                        {current.question.content}
+                      </p>
+                    ) : (
+                      <p className="mt-1 font-medium text-slate-900">
+                        Điền vào chỗ trống
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFlag(current.question.id)}
+                    className={cn(
+                      "shrink-0 rounded-lg border px-3 py-1.5 text-sm transition",
+                      isFlagged
+                        ? "border-amber-400 bg-amber-50 text-amber-900"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    {isFlagged ? "🚩 Bỏ đánh dấu" : "🚩 Đánh dấu câu"}
+                  </button>
+                </div>
+
+                <QuestionAnswerInput
+                  question={current.question}
+                  value={answers[current.question.id] ?? {}}
+                  onChange={(value) =>
+                    setAnswer(current.question.id, value)
+                  }
+                />
+              </Card>
+            );
+          })}
+
+          <Card className="p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Button
+                variant="secondary"
+                disabled={pageIndex === 0}
+                onClick={() => goToPage(pageIndex - 1)}
+              >
+                {isSingleQuestionPage ? "← Câu trước" : "← Trang trước"}
+              </Button>
+              {pageIndex < totalPages - 1 ? (
+                <Button onClick={() => goToPage(pageIndex + 1)}>
+                  {isSingleQuestionPage ? "Câu sau →" : "Trang sau →"}
+                </Button>
+              ) : (
+                <Button onClick={() => setShowReview(true)}>
+                  Xem lại và nộp
+                </Button>
+              )}
+            </div>
+          </Card>
 
           {error && !showReview && <Alert variant="error">{error}</Alert>}
         </div>

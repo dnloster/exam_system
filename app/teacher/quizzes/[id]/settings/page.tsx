@@ -10,6 +10,7 @@ type Quiz = QuizSettingsData & {
   id: number;
   openAt: string | null;
   closeAt: string | null;
+  hasAccessPassword?: boolean;
 };
 
 export default function QuizSettingsPage() {
@@ -72,6 +73,7 @@ export default function QuizSettingsPage() {
           attemptsAllowed: quiz.attemptsAllowed,
           passingScore: quiz.passingScore,
           isPublished: quiz.isPublished,
+          hasAccessPassword: quiz.hasAccessPassword,
         }}
         onSubmit={handleSave}
       />

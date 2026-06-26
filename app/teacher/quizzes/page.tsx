@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import PortalLayout from "@/components/portal/PortalLayout";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -16,6 +17,7 @@ type Quiz = {
   passingScore: number;
   timeLimitMinutes: number | null;
   maxGrade?: number;
+  unit?: { id: number; name: string } | null;
   questions: {
     id: number;
     slotType?: "FIXED" | "RANDOM";
@@ -25,6 +27,7 @@ type Quiz = {
 };
 
 export default function TeacherQuizzesPage() {
+  const { data: session } = useSession();
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,7 +52,11 @@ export default function TeacherQuizzesPage() {
       <div className="page-shell">
         <PageHeader
           title="Quản lý bài kiểm tra"
-          description="Tạo, cấu hình và ghi danh sinh viên cho từng bài kiểm tra"
+          description={
+            session?.user.unitName
+              ? `Đơn vị: ${session.user.unitName} — tạo và ghi danh thành viên làm bài`
+              : "Tạo, cấu hình và ghi danh thành viên đơn vị cho từng bài kiểm tra"
+          }
           actions={
             <Link href="/teacher/quizzes/new">
               <Button>+ Thêm bài kiểm tra</Button>
@@ -74,6 +81,7 @@ export default function TeacherQuizzesPage() {
               <thead>
                 <tr>
                   <th>Tên</th>
+                  <th className="w-40">Đơn vị</th>
                   <th className="w-24 text-center">Câu hỏi</th>
                   <th className="w-24 text-center">Tổng điểm</th>
                   <th className="w-28 text-center">Ghi danh</th>
@@ -104,6 +112,9 @@ export default function TeacherQuizzesPage() {
                           </p>
                         )}
                       </td>
+                      <td className="text-sm text-slate-600">
+                        {quiz.unit?.name ?? "—"}
+                      </td>
                       <td className="text-center">{quiz.questions.length}</td>
                       <td className="text-center">{maxGrade}</td>
                       <td className="text-center">
@@ -133,6 +144,12 @@ export default function TeacherQuizzesPage() {
                             className="link-primary"
                           >
                             Ghi danh
+                          </Link>
+                          <Link
+                            href={`/teacher/quizzes/${quiz.id}/grades`}
+                            className="link-primary"
+                          >
+                            Điểm
                           </Link>
                           <Link
                             href={`/teacher/quizzes/${quiz.id}/question-bank`}

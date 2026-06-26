@@ -9,8 +9,8 @@ datasource db {
 
 enum Role {
   ADMIN
-  TEACHER
-  STUDENT
+  UNIT_COMMANDER
+  UNIT_MEMBER
 }
 
 enum QuestionType {
@@ -49,19 +49,36 @@ enum QuizQuestionSlotType {
   RANDOM
 }
 
+enum UnitKind {
+  KHOA
+  PHONG_BAN
+}
+
 model User {
   id               Int                 @id @default(autoincrement())
   username         String              @unique
   passwordHash     String
   fullName         String
-  role             Role                @default(STUDENT)
+  role             Role                @default(UNIT_MEMBER)
+  unitId           Int?
   isActive         Boolean             @default(true)
   createdAt        DateTime            @default(now())
+  unit             Unit?               @relation(fields: [unitId], references: [id])
   attempts         QuizAttempt[]
   questions        Question[]          @relation("QuestionCreator")
   quizzes          Quiz[]              @relation("QuizCreator")
   quizParticipants QuizParticipant[]
   courseEnrollments CourseEnrollment[]
+}
+
+model Unit {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String   @unique
+  unitKind  UnitKind @default(PHONG_BAN)
+  sortOrder Int      @default(0)
+  users     User[]
+  quizzes   Quiz[]
 }
 
 model Course {
@@ -105,7 +122,7 @@ model Question {
   type             QuestionType      @default(MULTIPLE_CHOICE)
   category         String?
   categoryId       Int?
-  points           Int               @default(1)
+  points           Float             @default(1)
   generalFeedback  String?           @db.Text
   shuffleAnswers   Boolean           @default(false)
   configJson       Json?
@@ -140,6 +157,7 @@ model Quiz {
   title              String
   description        String?             @db.Text
   courseId           Int?
+  unitId             Int?
   openAt             DateTime?
   closeAt            DateTime?
   timeLimitMinutes   Int?
@@ -147,10 +165,12 @@ model Quiz {
   questionsPerPage   Int                 @default(0)
   attemptsAllowed    Int                 @default(1)
   passingScore       Int                 @default(50)
+  accessPasswordHash String?
   isPublished        Boolean             @default(false)
   createdById        Int
   createdAt          DateTime            @default(now())
   course             Course?             @relation(fields: [courseId], references: [id])
+  unit               Unit?               @relation(fields: [unitId], references: [id])
   createdBy          User                @relation("QuizCreator", fields: [createdById], references: [id])
   questions          QuizQuestion[]
   attempts           QuizAttempt[]

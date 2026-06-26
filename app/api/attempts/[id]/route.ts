@@ -3,22 +3,21 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
 import { isQuizWithinAvailabilityWindow } from "@/lib/quiz-access";
 import { attemptSubmitSchema } from "@/lib/validators";
-import {
-  scoreAnswerForQuestion,
-  isAnswerFullyCorrect,
-} from "@/lib/question-grading";
+import { scoreAnswerForQuestion, isAnswerFullyCorrect } from "@/lib/question-grading";
 import type { StudentAnswerJson } from "@/lib/question-types";
+import { pointsPerSlot } from "@/lib/quiz-points";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
 
   const attempt = await prisma.quizAttempt.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: {
       user: { select: { fullName: true, username: true } },
       quiz: {
@@ -43,9 +42,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const isTeacherOrAdmin =
-    user!.role === "TEACHER" || user!.role === "ADMIN";
-  if (attempt.userId !== Number(user!.id) && !isTeacherOrAdmin) {
+  const isManager =
+    user!.role === "UNIT_COMMANDER" || user!.role === "ADMIN";
+  if (attempt.userId !== Number(user!.id) && !isManager) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -71,10 +70,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
 
-  const attemptId = Number(params.id);
+  const attemptId = Number(id);
   const attempt = await prisma.quizAttempt.findUnique({
     where: { id: attemptId },
     include: {
@@ -124,6 +124,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   let earnedPoints = 0;
   let maxPoints = 0;
 
+  const slotCount = attempt.quiz.questions.length;
+  const perSlot = pointsPerSlot(slotCount);
+
   const questionsById = new Map<
     number,
     (typeof attempt.quiz.questions)[0]["question"]
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (!question) continue;
 
-    maxPoints += question.points;
+    maxPoints += perSlot;
 
     const selectedOptionIds = answer.selectedOptionIds?.length
       ? answer.selectedOptionIds
@@ -154,7 +157,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       selectedOptionIds: answer.selectedOptionIds,
       answerJson: answer.answerJson as StudentAnswerJson | undefined,
     });
-    earnedPoints += question.points * scoreFraction;
+    earnedPoints += perSlot * scoreFraction;
 
     const isCorrect = isAnswerFullyCorrect(scoreFraction);
 

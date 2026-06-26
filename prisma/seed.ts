@@ -1,5 +1,7 @@
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { ORGANIZATIONAL_UNITS } from "../lib/units";
+import { hashQuizAccessPassword } from "../lib/quiz-access-password";
 
 const prisma = new PrismaClient();
 
@@ -18,7 +20,6 @@ function mapSeedOptions(
 const sampleQuestions = [
   {
     content: "Thành phần nào lưu trữ dữ liệu tạm thời trong quá trình xử lý của CPU?",
-    category: "Phần cứng",
     options: [
       { text: "Ổ cứng", isCorrect: false },
       { text: "RAM", isCorrect: true },
@@ -28,7 +29,6 @@ const sampleQuestions = [
   },
   {
     content: "Giao thức nào được sử dụng để truyền trang web trên Internet?",
-    category: "Mạng",
     options: [
       { text: "FTP", isCorrect: false },
       { text: "HTTP/HTTPS", isCorrect: true },
@@ -38,7 +38,6 @@ const sampleQuestions = [
   },
   {
     content: "Hệ điều hành Windows thuộc loại phần mềm nào?",
-    category: "Hệ điều hành",
     options: [
       { text: "Phần mềm ứng dụng", isCorrect: false },
       { text: "Phần mềm hệ thống", isCorrect: true },
@@ -48,7 +47,6 @@ const sampleQuestions = [
   },
   {
     content: "Địa chỉ IP phiên bản 4 có độ dài bao nhiêu bit?",
-    category: "Mạng",
     options: [
       { text: "16 bit", isCorrect: false },
       { text: "32 bit", isCorrect: true },
@@ -58,62 +56,11 @@ const sampleQuestions = [
   },
   {
     content: "Thiết bị nào kết nối các mạng LAN với nhau?",
-    category: "Mạng",
     options: [
       { text: "Switch", isCorrect: false },
       { text: "Router", isCorrect: true },
       { text: "Hub", isCorrect: false },
       { text: "Modem", isCorrect: false },
-    ],
-  },
-  {
-    content: "Ngôn ngữ lập trình nào chạy trên trình duyệt web?",
-    category: "Lập trình",
-    options: [
-      { text: "C++", isCorrect: false },
-      { text: "JavaScript", isCorrect: true },
-      { text: "Assembly", isCorrect: false },
-      { text: "COBOL", isCorrect: false },
-    ],
-  },
-  {
-    content: "SQL là viết tắt của?",
-    category: "Cơ sở dữ liệu",
-    options: [
-      { text: "Structured Query Language", isCorrect: true },
-      { text: "Simple Query Logic", isCorrect: false },
-      { text: "System Quality Layer", isCorrect: false },
-      { text: "Standard Queue List", isCorrect: false },
-    ],
-  },
-  {
-    content: "Phím tắt Ctrl + C trong Windows dùng để?",
-    category: "Tin học cơ bản",
-    options: [
-      { text: "Sao chép", isCorrect: true },
-      { text: "Cắt", isCorrect: false },
-      { text: "Dán", isCorrect: false },
-      { text: "Lưu file", isCorrect: false },
-    ],
-  },
-  {
-    content: "Đơn vị đo dung lượng lớn hơn Megabyte (MB) là?",
-    category: "Tin học cơ bản",
-    options: [
-      { text: "Kilobyte", isCorrect: false },
-      { text: "Gigabyte", isCorrect: true },
-      { text: "Bit", isCorrect: false },
-      { text: "Hertz", isCorrect: false },
-    ],
-  },
-  {
-    content: "Trong mô hình OSI, tầng nào chịu trách nhiệm định tuyến?",
-    category: "Mạng",
-    options: [
-      { text: "Tầng vật lý", isCorrect: false },
-      { text: "Tầng mạng (Network)", isCorrect: true },
-      { text: "Tầng giao vận", isCorrect: false },
-      { text: "Tầng ứng dụng", isCorrect: false },
     ],
   },
 ];
@@ -122,34 +69,66 @@ async function createUser(
   username: string,
   password: string,
   fullName: string,
-  role: Role
+  role: Role,
+  unitId?: number
 ) {
   const passwordHash = await bcrypt.hash(password, 10);
   return prisma.user.upsert({
     where: { username },
-    update: {},
-    create: { username, passwordHash, fullName, role },
+    update: { fullName, role, unitId: unitId ?? null },
+    create: { username, passwordHash, fullName, role, unitId: unitId ?? null },
   });
 }
 
 async function main() {
-  const admin = await createUser("admin", "admin123", "Quản trị viên", "ADMIN");
-  const teacher1 = await createUser(
-    "teacher1",
-    "teacher123",
-    "Giáo viên Nguyễn Văn A",
-    "TEACHER"
+  const admin = await createUser(
+    "admin",
+    "admin123",
+    "Quản trị viên hệ thống",
+    "ADMIN"
   );
-  await createUser("teacher2", "teacher123", "Giáo viên Trần Thị B", "TEACHER");
 
-  for (let i = 1; i <= 5; i++) {
+  const units = [];
+  for (const unitDef of ORGANIZATIONAL_UNITS) {
+    const unit = await prisma.unit.upsert({
+      where: { code: unitDef.code },
+      update: {
+        name: unitDef.name,
+        sortOrder: unitDef.sortOrder,
+        unitKind: unitDef.unitKind,
+      },
+      create: {
+        code: unitDef.code,
+        name: unitDef.name,
+        sortOrder: unitDef.sortOrder,
+        unitKind: unitDef.unitKind,
+      },
+    });
+    units.push(unit);
+
     await createUser(
-      `student${i}`,
-      "student123",
-      `Sinh viên ${i}`,
-      "STUDENT"
+      `chi-huy-${unitDef.code.toLowerCase()}`,
+      "chi-huy123",
+      `Chỉ huy ${unitDef.name}`,
+      "UNIT_COMMANDER",
+      unit.id
     );
+
+    for (let i = 1; i <= 3; i++) {
+      await createUser(
+        `thanhvien-${unitDef.code.toLowerCase()}-${i}`,
+        "thanhvien123",
+        `Thành viên ${i} - ${unitDef.name}`,
+        "UNIT_MEMBER",
+        unit.id
+      );
+    }
   }
+
+  const kcntt = units.find((u) => u.code === "KCNTT")!;
+  const commanderKcntt = await prisma.user.findUnique({
+    where: { username: "chi-huy-kcntt" },
+  });
 
   const course = await prisma.course.upsert({
     where: { code: "CNTT-K24" },
@@ -171,111 +150,77 @@ async function main() {
     },
   });
 
-  const students = await prisma.user.findMany({
-    where: { role: "STUDENT" },
+  const kcnttMembers = await prisma.user.findMany({
+    where: { unitId: kcntt.id, role: "UNIT_MEMBER" },
+    take: 4,
   });
 
   await prisma.courseEnrollment.createMany({
     data: [
-      ...students.slice(0, 4).map((s) => ({ courseId: course.id, userId: s.id })),
-      ...students.slice(3, 5).map((s) => ({ courseId: course2.id, userId: s.id })),
+      ...kcnttMembers.slice(0, 3).map((s) => ({
+        courseId: course.id,
+        userId: s.id,
+      })),
+      ...kcnttMembers.slice(2, 4).map((s) => ({
+        courseId: course2.id,
+        userId: s.id,
+      })),
     ],
     skipDuplicates: true,
   });
 
-  const quiz1 = await prisma.quiz.create({
+  const quiz = await prisma.quiz.create({
     data: {
       title: "Kiểm tra giữa kỳ - Tin học cơ bản",
-      description: "Bài kiểm tra trắc nghiệm môn Tin học cơ bản",
-      courseId: course.id,
+      description: "Bài kiểm tra trắc nghiệm dành cho Khoa Công nghệ và an toàn thông tin",
+      unitId: kcntt.id,
       timeLimitMinutes: 30,
       shuffleQuestions: true,
       passingScore: 50,
       isPublished: true,
-      createdById: teacher1.id,
+      accessPasswordHash: await hashQuizAccessPassword("thi123"),
+      createdById: commanderKcntt!.id,
       questionCategories: {
-        create: [
-          { name: "Mặc định cho bài kiểm tra" },
-          { name: "Tin học cơ bản" },
-        ],
+        create: [{ name: "Mặc định cho bài kiểm tra" }],
       },
     },
     include: { questionCategories: true },
   });
 
-  const quiz1DefaultCat = quiz1.questionCategories.find(
-    (c) => c.name === "Mặc định cho bài kiểm tra"
-  )!;
+  const defaultCat = quiz.questionCategories[0]!;
 
-  for (let index = 0; index < 5; index++) {
+  for (let index = 0; index < sampleQuestions.length; index++) {
     const q = sampleQuestions[index];
     const question = await prisma.question.create({
       data: {
         content: q.content,
-        categoryId: quiz1DefaultCat.id,
-        createdById: teacher1.id,
+        categoryId: defaultCat.id,
+        createdById: commanderKcntt!.id,
         options: { create: mapSeedOptions(q.options) },
       },
     });
     await prisma.quizQuestion.create({
-      data: { quizId: quiz1.id, questionId: question.id, order: index },
+      data: { quizId: quiz.id, questionId: question.id, order: index },
     });
   }
 
-  const studentsEnrolled = await prisma.user.findMany({
-    where: { role: "STUDENT" },
+  const members = await prisma.user.findMany({
+    where: { unitId: kcntt.id, role: "UNIT_MEMBER" },
+    take: 2,
   });
 
   await prisma.quizParticipant.createMany({
-    data: studentsEnrolled.slice(0, 3).map((s) => ({
-      quizId: quiz1.id,
-      userId: s.id,
-    })),
+    data: members.map((m) => ({ quizId: quiz.id, userId: m.id })),
+    skipDuplicates: true,
   });
-
-  const quiz2 = await prisma.quiz.create({
-    data: {
-      title: "Ôn tập mạng máy tính",
-      description: "Bài ôn tập các kiến thức về mạng",
-      courseId: course.id,
-      timeLimitMinutes: 20,
-      shuffleQuestions: false,
-      passingScore: 60,
-      isPublished: false,
-      createdById: teacher1.id,
-      questionCategories: {
-        create: [
-          { name: "Mặc định cho bài kiểm tra" },
-          { name: "Mạng" },
-        ],
-      },
-    },
-    include: { questionCategories: true },
-  });
-
-  const quiz2DefaultCat = quiz2.questionCategories.find(
-    (c) => c.name === "Mặc định cho bài kiểm tra"
-  )!;
-
-  for (let index = 0; index < 5; index++) {
-    const q = sampleQuestions[index + 5];
-    const question = await prisma.question.create({
-      data: {
-        content: q.content,
-        categoryId: quiz2DefaultCat.id,
-        createdById: teacher1.id,
-        options: { create: mapSeedOptions(q.options) },
-      },
-    });
-    await prisma.quizQuestion.create({
-      data: { quizId: quiz2.id, questionId: question.id, order: index },
-    });
-  }
 
   console.log("Seed completed:", {
     admin: admin.username,
-    quiz1: quiz1.title,
-    quiz2: quiz2.title,
+    units: units.length,
+    sampleQuiz: quiz.title,
+    sampleCommander: "chi-huy-kcntt / chi-huy123",
+    sampleMember: "thanhvien-kcntt-1 / thanhvien123",
+    sampleQuizPassword: "thi123",
   });
 }
 

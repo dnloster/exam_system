@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import { requireAuth, canManageQuestions, assertCommanderQuizAccess } from "@/lib/auth-helpers";
 import {
   assertQuestionInQuiz,
   getOrCreateDefaultCategory,
@@ -11,10 +11,11 @@ import {
   quizQuestionCreateSchema,
 } from "@/lib/validators";
 import { prismaQuestionDataFromForm } from "@/lib/question-api";
+import { syncQuizQuestionPoints } from "@/lib/quiz-points";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 async function attachQuestion(quizId: number, questionId: number) {
   const maxOrder = await prisma.quizQuestion.aggregate({
@@ -34,13 +35,16 @@ async function attachQuestion(quizId: number, questionId: number) {
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quizId = Number(params.id);
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
   const body = await request.json();
 
   const batchParsed = quizQuestionAttachBatchSchema.safeParse(body);
@@ -82,6 +86,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       )
     );
 
+    await syncQuizQuestionPoints(quizId);
+
     return NextResponse.json(
       {
         attached: links.length,
@@ -118,6 +124,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const link = await attachQuestion(quizId, attachParsed.data.questionId);
+    await syncQuizQuestionPoints(quizId);
     return NextResponse.json(link, { status: 201 });
   }
 
@@ -140,15 +147,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   });
 
   const link = await attachQuestion(quizId, question.id);
+  await syncQuizQuestionPoints(quizId);
   return NextResponse.json(link, { status: 201 });
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  const accessError = await assertCommanderQuizAccess(Number(id), user!);
+  if (accessError) return accessError;
 
   const { searchParams } = new URL(request.url);
   const quizQuestionId = searchParams.get("quizQuestionId");
@@ -156,12 +168,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   if (quizQuestionId) {
     const slot = await prisma.quizQuestion.findFirst({
-      where: { id: Number(quizQuestionId), quizId: Number(params.id) },
+      where: { id: Number(quizQuestionId), quizId: Number(id) },
     });
     if (!slot) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     await prisma.quizQuestion.delete({ where: { id: slot.id } });
+    await syncQuizQuestionPoints(Number(id));
     return NextResponse.json({ success: true });
   }
 
@@ -175,11 +188,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   await prisma.quizQuestion.delete({
     where: {
       quizId_questionId: {
-        quizId: Number(params.id),
+        quizId: Number(id),
         questionId: Number(questionId),
       },
     },
   });
+
+  await syncQuizQuestionPoints(Number(id));
 
   return NextResponse.json({ success: true });
 }

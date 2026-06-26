@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
+import { isCommanderOrAdmin } from "@/lib/roles";
 import { assertStudentQuizAccess } from "@/lib/quiz-access";
 import { resolveRandomDrawsForAttempt } from "@/lib/random-questions";
+import { attemptStartSchema } from "@/lib/validators";
+import { verifyQuizAccessPassword } from "@/lib/quiz-access-password";
 
 export const dynamic = "force-dynamic";
 
@@ -11,15 +14,16 @@ export async function POST(request: NextRequest) {
     if (error) return error;
 
     const body = await request.json();
-    const quizId = Number(body.quizId);
-    if (!quizId) {
-        return NextResponse.json({ error: "quizId required" }, { status: 400 });
+    const parsed = attemptStartSchema.safeParse(body);
+    if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid data" }, { status: 400 });
     }
 
-    const isTeacherOrAdmin =
-        user!.role === "TEACHER" || user!.role === "ADMIN";
+    const quizId = parsed.data.quizId;
 
-    if (!isTeacherOrAdmin) {
+    const isManager = isCommanderOrAdmin(user!.role);
+
+    if (!isManager) {
         const access = await assertStudentQuizAccess(quizId, Number(user!.id));
         if (!access.ok) {
             return NextResponse.json(
@@ -60,6 +64,20 @@ export async function POST(request: NextRequest) {
 
     if (existing?.status === "IN_PROGRESS") {
         return NextResponse.json(existing);
+    }
+
+    if (
+        !isManager &&
+        quiz.accessPasswordHash &&
+        !(await verifyQuizAccessPassword(
+            parsed.data.accessPassword ?? "",
+            quiz.accessPasswordHash
+        ))
+    ) {
+        return NextResponse.json(
+            { error: "Mật khẩu vào thi không đúng" },
+            { status: 403 }
+        );
     }
 
     const fixedSlots = quiz.questions.filter(
@@ -122,12 +140,12 @@ export async function GET(request: NextRequest) {
     if (error) return error;
 
     const quizId = Number(new URL(request.url).searchParams.get("quizId"));
-    const isTeacherOrAdmin = user!.role === "TEACHER" || user!.role === "ADMIN";
+    const isManager = isCommanderOrAdmin(user!.role);
 
     const attempts = await prisma.quizAttempt.findMany({
         where: {
             ...(quizId ? { quizId } : {}),
-            ...(isTeacherOrAdmin ? {} : { userId: Number(user!.id) }),
+            ...(isManager ? {} : { userId: Number(user!.id) }),
         },
         include: {
             user: { select: { fullName: true, username: true } },

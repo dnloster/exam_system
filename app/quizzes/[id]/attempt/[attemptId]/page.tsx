@@ -10,6 +10,7 @@ type QuizData = {
   title: string;
   timeLimitMinutes: number | null;
   shuffleQuestions: boolean;
+  questionsPerPage: number;
   questions: {
     questionId: number;
     order: number;
@@ -75,6 +76,7 @@ export default function QuizAttemptPage() {
           title={quiz.title}
           timeLimitMinutes={quiz.timeLimitMinutes}
           shuffleQuestions={quiz.shuffleQuestions}
+          questionsPerPage={quiz.questionsPerPage ?? 0}
           questions={quiz.questions
             .filter((q) => q.question != null)
             .map((q) => ({

@@ -10,7 +10,25 @@ export const userCreateSchema = z.object({
   username: z.string().min(3).max(50),
   password: z.string().min(6),
   fullName: z.string().min(1),
-  role: z.enum(["ADMIN", "TEACHER", "STUDENT"]),
+  role: z.enum(["ADMIN", "UNIT_COMMANDER", "UNIT_MEMBER"]),
+  unitId: z.number().int().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.role === "UNIT_COMMANDER" || data.role === "UNIT_MEMBER") {
+    if (data.unitId == null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Cần chọn đơn vị cho tài khoản",
+        path: ["unitId"],
+      });
+    }
+  }
+  if (data.role === "ADMIN" && data.unitId != null) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Tài khoản quản trị không gắn đơn vị",
+      path: ["unitId"],
+    });
+  }
 });
 
 export const questionOptionSchema = z.object({
@@ -28,6 +46,7 @@ export const quizCreateSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   courseId: z.number().int().optional().nullable(),
+  unitId: z.number().int().optional().nullable(),
   openAt: z.string().datetime().optional().nullable(),
   closeAt: z.string().datetime().optional().nullable(),
   timeLimitMinutes: z.number().int().min(1).optional().nullable(),
@@ -36,6 +55,13 @@ export const quizCreateSchema = z.object({
   attemptsAllowed: z.number().int().min(1).default(1),
   passingScore: z.number().int().min(0).max(100).default(50),
   isPublished: z.boolean().default(false),
+  accessPassword: z.string().max(128).optional().nullable(),
+  removeAccessPassword: z.boolean().optional(),
+});
+
+export const attemptStartSchema = z.object({
+  quizId: z.number().int(),
+  accessPassword: z.string().max(128).optional().nullable(),
 });
 
 export const quizUpdateSchema = quizCreateSchema.partial();
@@ -51,6 +77,10 @@ export const quizQuestionAttachBatchSchema = z.object({
 export const quizQuestionCreateSchema = questionCreateSchema;
 
 export const quizQuestionReorderSchema = z.object({
+  slotIds: z.array(z.number().int()).min(1),
+});
+
+export const quizQuestionBulkDeleteSchema = z.object({
   slotIds: z.array(z.number().int()).min(1),
 });
 
@@ -74,11 +104,22 @@ export const attemptSubmitSchema = z.object({
 export const quizParticipantEnrolSchema = z
   .object({
     userIds: z.array(z.number().int()).optional(),
+    enrollAllUnitMembers: z.boolean().optional(),
+    enrollAllCourseStudents: z.boolean().optional(),
+    enrollAllEligible: z.boolean().optional(),
     courseId: z.number().int().optional(),
   })
-  .refine((data) => (data.userIds?.length ?? 0) > 0 || data.courseId, {
-    message: "Cần userIds hoặc courseId",
-  });
+  .refine(
+    (data) =>
+      (data.userIds?.length ?? 0) > 0 ||
+      data.enrollAllUnitMembers ||
+      data.enrollAllCourseStudents ||
+      data.enrollAllEligible ||
+      data.courseId != null,
+    {
+      message: "Cần chọn đối tượng ghi danh",
+    }
+  );
 
 export const aikenImportSchema = z.object({
   content: z.string().min(1),

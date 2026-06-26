@@ -10,24 +10,35 @@ import Label from "@/components/ui/Label";
 import Alert from "@/components/ui/Alert";
 import Badge from "@/components/ui/Badge";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { ROLE_LABELS } from "@/lib/roles";
+
+type Unit = {
+  id: number;
+  code: string;
+  name: string;
+};
 
 type User = {
   id: number;
   username: string;
   fullName: string;
-  role: "ADMIN" | "TEACHER" | "STUDENT";
+  role: "ADMIN" | "UNIT_COMMANDER" | "UNIT_MEMBER";
   isActive: boolean;
   createdAt: string;
+  unitId: number | null;
+  unit: Unit | null;
 };
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     username: "",
     password: "",
     fullName: "",
-    role: "STUDENT" as User["role"],
+    role: "UNIT_MEMBER" as User["role"],
+    unitId: "" as string | number,
   });
   const [error, setError] = useState("");
 
@@ -37,8 +48,14 @@ export default function AdminUsersPage() {
     setLoading(false);
   }
 
+  async function loadUnits() {
+    const res = await fetch("/api/units");
+    if (res.ok) setUnits(await res.json());
+  }
+
   useEffect(() => {
     loadUsers();
+    loadUnits();
   }, []);
 
   async function handleCreate(e: FormEvent) {
@@ -47,14 +64,28 @@ export default function AdminUsersPage() {
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        unitId:
+          form.role === "ADMIN"
+            ? null
+            : form.unitId
+              ? Number(form.unitId)
+              : null,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
       setError(data.error ?? "Lỗi tạo tài khoản");
       return;
     }
-    setForm({ username: "", password: "", fullName: "", role: "STUDENT" });
+    setForm({
+      username: "",
+      password: "",
+      fullName: "",
+      role: "UNIT_MEMBER",
+      unitId: "",
+    });
     await loadUsers();
   }
 
@@ -63,7 +94,7 @@ export default function AdminUsersPage() {
       <div className="page-shell">
         <PageHeader
           title="Quản lý người dùng"
-          description="Tạo và quản lý tài khoản hệ thống"
+          description="Tạo tài khoản chỉ huy và thành viên theo từng đơn vị"
         />
 
         <Card padding={false} className="mb-8">
@@ -114,14 +145,35 @@ export default function AdminUsersPage() {
                     setForm({
                       ...form,
                       role: e.target.value as User["role"],
+                      unitId:
+                        e.target.value === "ADMIN" ? "" : form.unitId,
                     })
                   }
                 >
-                  <option value="STUDENT">Sinh viên</option>
-                  <option value="TEACHER">Giáo viên</option>
-                  <option value="ADMIN">Quản trị</option>
+                  <option value="UNIT_MEMBER">Thành viên đơn vị</option>
+                  <option value="UNIT_COMMANDER">Chỉ huy đơn vị</option>
+                  <option value="ADMIN">Quản trị hệ thống</option>
                 </Select>
               </div>
+              {form.role !== "ADMIN" && (
+                <div className="md:col-span-2">
+                  <Label>Đơn vị</Label>
+                  <Select
+                    value={form.unitId}
+                    onChange={(e) =>
+                      setForm({ ...form, unitId: e.target.value })
+                    }
+                    required
+                  >
+                    <option value="">-- Chọn đơn vị --</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               {error && (
                 <div className="md:col-span-2">
                   <Alert variant="error">{error}</Alert>
@@ -145,6 +197,7 @@ export default function AdminUsersPage() {
                 <tr>
                   <th>Kí danh</th>
                   <th>Họ tên</th>
+                  <th>Đơn vị</th>
                   <th>Vai trò</th>
                   <th>Trạng thái</th>
                 </tr>
@@ -154,8 +207,11 @@ export default function AdminUsersPage() {
                   <tr key={user.id}>
                     <td className="font-medium">{user.username}</td>
                     <td>{user.fullName}</td>
+                    <td>{user.unit?.name ?? "—"}</td>
                     <td>
-                      <Badge variant="primary">{user.role}</Badge>
+                      <Badge variant="primary">
+                        {ROLE_LABELS[user.role]}
+                      </Badge>
                     </td>
                     <td>
                       <Badge variant={user.isActive ? "success" : "muted"}>

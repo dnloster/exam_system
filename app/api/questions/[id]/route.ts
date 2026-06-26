@@ -7,9 +7,10 @@ import { prismaQuestionUpdateFromForm } from "@/lib/question-api";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
@@ -17,7 +18,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const question = await prisma.question.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: { options: { orderBy: { sortOrder: "asc" } } },
   });
 
@@ -29,6 +30,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const { id: idParam } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
@@ -44,7 +46,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     );
   }
 
-  const id = Number(params.id);
+  const id = Number(idParam);
 
   if (parsed.data.quizId) {
     const scopeError = await assertQuestionInQuiz(id, parsed.data.quizId);
@@ -76,6 +78,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
@@ -85,7 +88,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const quizId = Number(new URL(request.url).searchParams.get("quizId"));
   if (quizId) {
     const scopeError = await assertQuestionInQuiz(
-      Number(params.id),
+      Number(id),
       quizId
     );
     if (scopeError) {
@@ -93,6 +96,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     }
   }
 
-  await prisma.question.delete({ where: { id: Number(params.id) } });
+  await prisma.question.delete({ where: { id: Number(id) } });
   return NextResponse.json({ success: true });
 }

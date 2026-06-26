@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import { requireAuth, canManageQuestions, commanderQuizListWhere, resolveQuizUnitIdForCreate } from "@/lib/auth-helpers";
+import { isCommanderOrAdmin } from "@/lib/roles";
 import { studentQuizListWhere } from "@/lib/quiz-access";
 import { quizCreateSchema } from "@/lib/validators";
 import { computeQuizMaxGradeFromDbQuestions } from "@/lib/quiz-slots";
+import {
+  resolveAccessPasswordUpdate,
+  stripQuizPasswordHash,
+} from "@/lib/quiz-access-password";
 
 export const dynamic = "force-dynamic";
 
@@ -21,31 +26,31 @@ export async function GET() {
   const { error, user } = await requireAuth();
   if (error) return error;
 
-  const isTeacherOrAdmin =
-    user!.role === "TEACHER" || user!.role === "ADMIN";
+  const isManager = isCommanderOrAdmin(user!.role);
 
   const userId = Number(user!.id);
 
   const quizzes = await prisma.quiz.findMany({
-    where: isTeacherOrAdmin ? undefined : studentQuizListWhere(userId),
+    where: isManager ? commanderQuizListWhere(user!) : studentQuizListWhere(userId),
     include: {
       course: true,
+      unit: { select: { id: true, name: true } },
       createdBy: { select: { fullName: true } },
       questions: {
         include: { question: true, randomCategory: true },
       },
-      participants: isTeacherOrAdmin
+      participants: isManager
         ? { include: { user: { select: { id: true, fullName: true } } } }
         : false,
-      attempts: isTeacherOrAdmin
+      attempts: isManager
         ? true
         : { where: { userId } },
-      _count: isTeacherOrAdmin ? { select: { participants: true } } : undefined,
+      _count: isManager ? { select: { participants: true } } : undefined,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  if (!isTeacherOrAdmin) {
+  if (!isManager) {
     const enrolledQuizIds = (
       await prisma.quizParticipant.findMany({
         where: { userId: Number(user!.id) },
@@ -68,10 +73,12 @@ export async function GET() {
   }
 
   const withMaxGrade = await Promise.all(
-    quizzes.map(async (quiz) => ({
-      ...quiz,
-      maxGrade: await computeQuizMaxGradeFromDbQuestions(quiz.id, quiz.questions),
-    }))
+    quizzes.map(async (quiz) =>
+      stripQuizPasswordHash({
+        ...quiz,
+        maxGrade: await computeQuizMaxGradeFromDbQuestions(quiz.id, quiz.questions),
+      })
+    )
   );
 
   return NextResponse.json(withMaxGrade);
@@ -93,7 +100,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const unitResult = await resolveQuizUnitIdForCreate(
+    user!,
+    parsed.data.unitId
+  );
+  if ("error" in unitResult) {
+    return NextResponse.json(
+      { error: unitResult.error },
+      { status: unitResult.status }
+    );
+  }
+
   const dates = parseQuizDates(parsed.data);
+  const passwordUpdate = await resolveAccessPasswordUpdate(
+    parsed.data.accessPassword
+  );
 
   const quiz = await prisma.quiz.create({
     data: {
@@ -108,16 +129,19 @@ export async function POST(request: NextRequest) {
       attemptsAllowed: parsed.data.attemptsAllowed,
       passingScore: parsed.data.passingScore,
       isPublished: parsed.data.isPublished,
+      ...(passwordUpdate ?? {}),
       createdById: Number(user!.id),
+      unitId: unitResult.unitId,
       questionCategories: {
         create: { name: "Mặc định cho bài kiểm tra" },
       },
     },
     include: {
       course: true,
+      unit: { select: { id: true, name: true } },
       questions: { include: { question: { include: { options: true } } } },
     },
   });
 
-  return NextResponse.json(quiz, { status: 201 });
+  return NextResponse.json(stripQuizPasswordHash(quiz), { status: 201 });
 }

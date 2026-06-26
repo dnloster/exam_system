@@ -7,6 +7,8 @@ import PortalLayout from "@/components/portal/PortalLayout";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Alert from "@/components/ui/Alert";
+import Input from "@/components/ui/Input";
+import Label from "@/components/ui/Label";
 import { Card, CardBody } from "@/components/ui/Card";
 
 type Quiz = {
@@ -16,6 +18,7 @@ type Quiz = {
   timeLimitMinutes: number | null;
   passingScore: number;
   shuffleQuestions: boolean;
+  hasAccessPassword?: boolean;
   questions: { id: number }[];
   attempts: { id: number; status: string }[];
 };
@@ -28,6 +31,7 @@ export default function QuizDetailPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
+  const [accessPassword, setAccessPassword] = useState("");
 
   useEffect(() => {
     fetch(`/api/quizzes/${quizId}`)
@@ -50,7 +54,10 @@ export default function QuizDetailPage() {
     const res = await fetch("/api/attempts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quizId }),
+      body: JSON.stringify({
+        quizId,
+        ...(accessPassword ? { accessPassword } : {}),
+      }),
     });
 
     const data = await res.json();
@@ -82,6 +89,8 @@ export default function QuizDetailPage() {
   }
 
   const attempt = quiz.attempts[0];
+  const needsPassword =
+    quiz.hasAccessPassword && !attempt;
 
   return (
     <PortalLayout>
@@ -102,7 +111,28 @@ export default function QuizDetailPage() {
               <Badge variant={quiz.shuffleQuestions ? "primary" : "muted"}>
                 {quiz.shuffleQuestions ? "Xáo trộn câu hỏi" : "Không xáo trộn"}
               </Badge>
+              {quiz.hasAccessPassword && (
+                <Badge variant="warning">Có mật khẩu vào thi</Badge>
+              )}
             </div>
+
+            {needsPassword && (
+              <div className="mt-5 max-w-md rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                <Label htmlFor="quiz-access-password">Mật khẩu vào thi</Label>
+                <Input
+                  id="quiz-access-password"
+                  type="password"
+                  value={accessPassword}
+                  onChange={(e) => setAccessPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu do giáo viên cung cấp"
+                  className="mt-2"
+                  autoComplete="off"
+                />
+                <p className="mt-2 text-xs text-amber-900/80">
+                  Bạn cần nhập đúng mật khẩu để bắt đầu làm bài.
+                </p>
+              </div>
+            )}
 
             {error && (
               <div className="mt-4">
@@ -120,7 +150,10 @@ export default function QuizDetailPage() {
                   <Button>Tiếp tục làm bài</Button>
                 </Link>
               ) : (
-                <Button onClick={startQuiz} disabled={starting}>
+                <Button
+                  onClick={startQuiz}
+                  disabled={starting || (needsPassword && !accessPassword.trim())}
+                >
                   {starting ? "Đang bắt đầu..." : "Bắt đầu làm bài"}
                 </Button>
               )}

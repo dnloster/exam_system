@@ -4,16 +4,17 @@ import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const courseId = Number(params.id);
+  const courseId = Number(id);
   const enrollments = await prisma.courseEnrollment.findMany({
     where: { courseId },
     include: {

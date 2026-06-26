@@ -20,6 +20,9 @@ export type QuizSettingsData = {
   attemptsAllowed: number;
   passingScore: number;
   isPublished: boolean;
+  hasAccessPassword?: boolean;
+  accessPassword?: string;
+  removeAccessPassword?: boolean;
 };
 
 type QuizSettingsFormProps = {
@@ -57,6 +60,8 @@ export default function QuizSettingsForm({
       attemptsAllowed: Number(form.get("attemptsAllowed") || 1),
       passingScore: Number(form.get("passingScore") || 50),
       isPublished: form.get("isPublished") === "on",
+      accessPassword: String(form.get("accessPassword") || "") || undefined,
+      removeAccessPassword: form.get("removeAccessPassword") === "on",
     });
   }
 
@@ -141,7 +146,7 @@ export default function QuizSettingsForm({
             <Label>Số câu hỏi mỗi trang</Label>
             <Select
               name="questionsPerPage"
-              defaultValue={initial.questionsPerPage}
+              defaultValue={String(initial.questionsPerPage)}
             >
               <option value={0}>Tất cả trên một trang</option>
               <option value={1}>1</option>
@@ -161,6 +166,36 @@ export default function QuizSettingsForm({
               defaultChecked={initial.isPublished}
             />
           </div>
+        </div>
+      </MoodleFieldset>
+
+      <MoodleFieldset title="Mật khẩu vào thi">
+        <div className="space-y-3">
+          <div>
+            <Label>Mật khẩu vào thi</Label>
+            <Input
+              name="accessPassword"
+              type="password"
+              autoComplete="new-password"
+              placeholder={
+                initial.hasAccessPassword
+                  ? "Nhập mật khẩu mới để đổi"
+                  : "Để trống nếu không yêu cầu mật khẩu"
+              }
+              className="max-w-md"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {initial.hasAccessPassword
+                ? "Bài kiểm tra đang có mật khẩu. Để trống khi lưu để giữ nguyên, hoặc tick bỏ mật khẩu bên dưới."
+                : "Thí sinh phải nhập mật khẩu này trước khi bắt đầu làm bài."}
+            </p>
+          </div>
+          {initial.hasAccessPassword && (
+            <Checkbox
+              name="removeAccessPassword"
+              label="Bỏ mật khẩu vào thi"
+            />
+          )}
         </div>
       </MoodleFieldset>
 

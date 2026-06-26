@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, canManageQuestions } from "@/lib/auth-helpers";
+import { requireAuth, canManageQuestions, assertCommanderQuizAccess } from "@/lib/auth-helpers";
 import { questionCategoryUpdateSchema } from "@/lib/validators";
 import { DEFAULT_CATEGORY_NAME } from "@/lib/question-helpers";
 import { wouldCreateCycle } from "@/lib/category-tree";
 
 export const dynamic = "force-dynamic";
 
-type Params = { params: { id: string; categoryId: string } };
+type Params = { params: Promise<{ id: string; categoryId: string }> };
 
 const categoryInclude = {
   _count: { select: { questions: true, children: true } },
@@ -22,14 +22,17 @@ async function findCategory(quizId: number, categoryId: number) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const { id, categoryId: categoryIdParam } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quizId = Number(params.id);
-  const categoryId = Number(params.categoryId);
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
+  const categoryId = Number(categoryIdParam);
   const body = await request.json();
   const parsed = questionCategoryUpdateSchema.safeParse(body);
 
@@ -99,14 +102,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
+  const { id, categoryId: categoryIdParam } = await params;
   const { error, user } = await requireAuth();
   if (error) return error;
   if (!canManageQuestions(user!.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quizId = Number(params.id);
-  const categoryId = Number(params.categoryId);
+  const quizId = Number(id);
+  const accessError = await assertCommanderQuizAccess(quizId, user!);
+  if (accessError) return accessError;
+  const categoryId = Number(categoryIdParam);
   const category = await findCategory(quizId, categoryId);
 
   if (!category) {

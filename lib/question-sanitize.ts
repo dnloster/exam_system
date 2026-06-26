@@ -18,6 +18,7 @@ type SanitizeQuestion = {
   id: number;
   type: string;
   content: string;
+  points?: number;
   configJson?: unknown;
   shuffleAnswers?: boolean;
   options: SanitizeOption[];
@@ -30,6 +31,7 @@ export function sanitizeQuestionForStudent(question: SanitizeQuestion) {
     id: question.id,
     type: question.type,
     content: question.content,
+    ...(question.points != null ? { points: question.points } : {}),
     shuffleAnswers: question.shuffleAnswers,
     configJson: question.configJson,
   };

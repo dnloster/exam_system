@@ -11,7 +11,7 @@ type Attempt = {
   status: string;
   submittedAt: string | null;
   user: { fullName: string; username: string };
-  quiz: { title: string; passingScore: number };
+  quiz: { id: number; title: string; passingScore: number };
   answers: {
     id: number;
     isCorrect: boolean | null;
@@ -55,8 +55,11 @@ export default function TeacherAttemptPage() {
   return (
     <PortalLayout>
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <Link href="/teacher/quizzes" className="text-sm text-portal-primary hover:underline">
-          ← Quay lại
+        <Link
+          href={`/teacher/quizzes/${attempt.quiz.id}/grades`}
+          className="text-sm text-portal-primary hover:underline"
+        >
+          ← Quay lại bảng điểm
         </Link>
 
         <div className="mt-4 rounded border bg-white p-6">

@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
-type Props = { params: { id: string } };
+type Props = { params: Promise<{ id: string }> };
 
-export default function QuizEditIndexPage({ params }: Props) {
-  redirect(`/teacher/quizzes/${params.id}/questions`);
+export default async function QuizEditIndexPage({ params }: Props) {
+  const { id } = await params;
+  redirect(`/teacher/quizzes/${id}/questions`);
 }
